@@ -6,17 +6,16 @@ import { Instrument, Pattern, notesForStep } from "./theory";
 const SALAMANDER_BASE = "https://tonejs.github.io/audio/salamander/";
 
 // Public sample set from nbrosowsky/tonejs-instruments (GitHub Pages CDN).
-// Steel-string acoustic guitar, recorded at a handful of pitches per octave
-// — Tone.Sampler interpolates between them for full chromatic coverage.
-const GUITAR_BASE = "https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-acoustic/";
+// Nylon-string classical guitar — softer / warmer than steel string,
+// favored for fingerpicking and sing-along. Tone.Sampler interpolates
+// between the recorded pitches.
+const GUITAR_BASE = "https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-nylon/";
 const GUITAR_SAMPLE_MAP: Record<string, string> = {
   A2: "A2.mp3", A3: "A3.mp3", A4: "A4.mp3", A5: "A5.mp3",
-  B3: "B3.mp3",
-  C3: "C3.mp3",
-  D2: "D2.mp3", D3: "D3.mp3", D4: "D4.mp3", D5: "D5.mp3",
-  E3: "E3.mp3", E4: "E4.mp3",
-  F4: "F4.mp3", F5: "F5.mp3",
-  G2: "G2.mp3", G3: "G3.mp3", G4: "G4.mp3",
+  B2: "B2.mp3", B3: "B3.mp3", B4: "B4.mp3",
+  D2: "D2.mp3", D3: "D3.mp3", D5: "D5.mp3",
+  E2: "E2.mp3", E3: "E3.mp3", E4: "E4.mp3", E5: "E5.mp3",
+  G3: "G3.mp3", G5: "G5.mp3",
 };
 
 const PIANO_SAMPLE_MAP: Record<string, string> = {
@@ -58,9 +57,10 @@ class AudioEngine {
   private droneNotes: string[] = [];
 
   private analyser: Tone.Analyser | null = null;
-  private chordVolume: Tone.Volume | null = null;
+  private pianoVolume: Tone.Volume | null = null;
+  private pianoReverb: Tone.Reverb | null = null;
+  private guitarReverb: Tone.Reverb | null = null;
   private droneVolume: Tone.Volume | null = null;
-  private chordReverb: Tone.Reverb | null = null;
 
   private loop: Tone.Loop | null = null;
   private currentChord: string[] = [];
@@ -82,9 +82,16 @@ class AudioEngine {
 
       this.analyser = new Tone.Analyser("fft", 64);
 
-      this.chordVolume = new Tone.Volume(-8).toDestination();
-      this.chordVolume.connect(this.analyser);
-      this.chordReverb = new Tone.Reverb({ decay: 4, wet: 0.32 }).connect(this.chordVolume);
+      // PIANO PATH: sampler → moderate reverb → volume → out
+      this.pianoVolume = new Tone.Volume(-4).toDestination();
+      this.pianoVolume.connect(this.analyser);
+      this.pianoReverb = new Tone.Reverb({ decay: 3.5, wet: 0.28 }).connect(this.pianoVolume);
+
+      // GUITAR PATH: sampler → light reverb → volume → out (independent
+      // chain so guitar doesn't get washed out by the heavy chord reverb).
+      this.guitarVolume = new Tone.Volume(-4).toDestination();
+      this.guitarVolume.connect(this.analyser);
+      this.guitarReverb = new Tone.Reverb({ decay: 1.4, wet: 0.18 }).connect(this.guitarVolume);
 
       this.droneVolume = new Tone.Volume(-20).toDestination();
       this.droneVolume.connect(this.analyser);
@@ -95,12 +102,11 @@ class AudioEngine {
         release: 1.2,
       });
 
-      this.guitarVolume = new Tone.Volume(-3).toDestination();
-      this.guitarVolume.connect(this.analyser);
       this.guitar = new Tone.Sampler({
         urls: GUITAR_SAMPLE_MAP,
         baseUrl: GUITAR_BASE,
-        release: 0.9,
+        attack: 0.005,
+        release: 1.6,
       });
 
       this.droneFilter = new Tone.Filter(700, "lowpass").connect(this.droneVolume);
@@ -110,9 +116,8 @@ class AudioEngine {
       }).connect(this.droneFilter);
 
       await Tone.loaded();
-      this.piano.connect(this.chordReverb);
-      this.guitar.connect(this.chordReverb);
-      this.guitar.connect(this.guitarVolume);
+      this.piano.connect(this.pianoReverb);
+      this.guitar.connect(this.guitarReverb);
       this.ready = true;
     })();
 
@@ -169,9 +174,10 @@ class AudioEngine {
         const velocity = step.length > 1 ? 0.55 : 0.7;
         const synth =
           this.instrument === "guitar" ? this.guitar : this.piano;
-        // Guitar notes ring longer than 16th notes — let the natural sample
-        // decay set the length so chord-strums sound like a single strum.
-        const duration = this.instrument === "guitar" ? "2n" : "16n";
+        // Guitar fingerpicks/strums ring out — give them ~2 measures of
+        // sustain so the natural sample decay carries through chord changes.
+        // Piano uses a tight "16n" because pianos articulate per-note.
+        const duration = this.instrument === "guitar" ? "2m" : "16n";
         synth?.triggerAttackRelease(notes, duration, time, velocity);
       }
       this.stepCounter++;
