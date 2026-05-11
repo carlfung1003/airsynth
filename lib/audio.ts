@@ -5,6 +5,20 @@ import { Instrument, Pattern, notesForStep } from "./theory";
 
 const SALAMANDER_BASE = "https://tonejs.github.io/audio/salamander/";
 
+// Public sample set from nbrosowsky/tonejs-instruments (GitHub Pages CDN).
+// Steel-string acoustic guitar, recorded at a handful of pitches per octave
+// — Tone.Sampler interpolates between them for full chromatic coverage.
+const GUITAR_BASE = "https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-acoustic/";
+const GUITAR_SAMPLE_MAP: Record<string, string> = {
+  A2: "A2.mp3", A3: "A3.mp3", A4: "A4.mp3", A5: "A5.mp3",
+  B3: "B3.mp3",
+  C3: "C3.mp3",
+  D2: "D2.mp3", D3: "D3.mp3", D4: "D4.mp3", D5: "D5.mp3",
+  E3: "E3.mp3", E4: "E4.mp3",
+  F4: "F4.mp3", F5: "F5.mp3",
+  G2: "G2.mp3", G3: "G3.mp3", G4: "G4.mp3",
+};
+
 const PIANO_SAMPLE_MAP: Record<string, string> = {
   A0: "A0.mp3",
   C1: "C1.mp3",
@@ -33,14 +47,9 @@ const PIANO_SAMPLE_MAP: Record<string, string> = {
   A6: "A6.mp3",
 };
 
-const GUITAR_POLYPHONY = 6;
-
 class AudioEngine {
   private piano: Tone.Sampler | null = null;
-  // Manual pool of PluckSynth voices — Tone.PluckSynth isn't Monophonic-typed,
-  // so Tone.PolySynth(Tone.PluckSynth) won't compile. Round-robin assignment.
-  private guitarPool: Tone.PluckSynth[] = [];
-  private guitarPoolIdx = 0;
+  private guitar: Tone.Sampler | null = null;
   private guitarVolume: Tone.Volume | null = null;
   private instrument: Instrument = "piano";
   private droneSynth: Tone.PolySynth | null = null;
@@ -86,20 +95,13 @@ class AudioEngine {
         release: 1.2,
       });
 
-      // PluckSynth = Karplus-Strong physical model. PluckSynth isn't typed as
-      // Monophonic so it can't go inside PolySynth — pool 6 voices manually.
-      this.guitarVolume = new Tone.Volume(-4).toDestination();
+      this.guitarVolume = new Tone.Volume(-3).toDestination();
       this.guitarVolume.connect(this.analyser);
-      for (let i = 0; i < GUITAR_POLYPHONY; i++) {
-        const voice = new Tone.PluckSynth({
-          attackNoise: 0.6,
-          dampening: 3800,
-          resonance: 0.85,
-        });
-        voice.connect(this.chordReverb);
-        voice.connect(this.guitarVolume);
-        this.guitarPool.push(voice);
-      }
+      this.guitar = new Tone.Sampler({
+        urls: GUITAR_SAMPLE_MAP,
+        baseUrl: GUITAR_BASE,
+        release: 0.9,
+      });
 
       this.droneFilter = new Tone.Filter(700, "lowpass").connect(this.droneVolume);
       this.droneSynth = new Tone.PolySynth(Tone.Synth, {
@@ -109,6 +111,8 @@ class AudioEngine {
 
       await Tone.loaded();
       this.piano.connect(this.chordReverb);
+      this.guitar.connect(this.chordReverb);
+      this.guitar.connect(this.guitarVolume);
       this.ready = true;
     })();
 
@@ -163,17 +167,12 @@ class AudioEngine {
       if (step.length) {
         const notes = notesForStep(chord, step);
         const velocity = step.length > 1 ? 0.55 : 0.7;
-        if (this.instrument === "guitar" && this.guitarPool.length) {
-          // PluckSynth.triggerAttack(note, time) — no velocity param;
-          // overall level comes from this.guitarVolume.
-          for (const note of notes) {
-            const voice = this.guitarPool[this.guitarPoolIdx];
-            this.guitarPoolIdx = (this.guitarPoolIdx + 1) % this.guitarPool.length;
-            voice.triggerAttack(note, time);
-          }
-        } else if (this.piano) {
-          this.piano.triggerAttackRelease(notes, "16n", time, velocity);
-        }
+        const synth =
+          this.instrument === "guitar" ? this.guitar : this.piano;
+        // Guitar notes ring longer than 16th notes — let the natural sample
+        // decay set the length so chord-strums sound like a single strum.
+        const duration = this.instrument === "guitar" ? "2n" : "16n";
+        synth?.triggerAttackRelease(notes, duration, time, velocity);
       }
       this.stepCounter++;
     }, "8n");
