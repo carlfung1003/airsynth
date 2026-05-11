@@ -214,8 +214,9 @@ export default function AirSynthStage() {
 
   useEffect(() => {
     if (!audioReady) return;
-    if (rightPresent) getAudioEngine().startLoop();
-  }, [audioReady, rightPresent]);
+    // Loop starts as soon as anything (hand or key/click) activates a chord.
+    if (chordIndex !== null) getAudioEngine().startLoop();
+  }, [audioReady, chordIndex]);
 
   useEffect(() => {
     if (!audioReady) return;
@@ -254,6 +255,102 @@ export default function AirSynthStage() {
     setTrackingStarted(true);
     void ensureAudio();
   }, [ensureAudio]);
+
+  // Pattern key letters in radial-clockwise order matching the visual layout.
+  // Length 8 always (max possible patterns).
+  const PATTERN_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i"] as const;
+
+  const rightPresentRef = useRef(rightPresent);
+  const leftPresentRef = useRef(leftPresent);
+  useEffect(() => { rightPresentRef.current = rightPresent; }, [rightPresent]);
+  useEffect(() => { leftPresentRef.current = leftPresent; }, [leftPresent]);
+
+  // Keyboard input — number 1..7 = chord (hold-to-play), Q..I = pattern (tap).
+  // Hand gesture takes priority: when right hand is present, ignore chord keys;
+  // when left hand is present, ignore pattern keys.
+  useEffect(() => {
+    const heldChordKeys: number[] = [];
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      // Ignore when typing in an input/textarea anywhere on the page.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      // Chord: 1..7
+      const num = parseInt(e.key, 10);
+      if (Number.isFinite(num) && num >= 1 && num <= chordCountRef.current) {
+        if (rightPresentRef.current) return;
+        if (!heldChordKeys.includes(num)) heldChordKeys.push(num);
+        const idx = num - 1;
+        chordIndexRef.current = idx;
+        setChordIndex(idx);
+        void ensureAudio();
+        return;
+      }
+
+      // Pattern: Q..I
+      const k = e.key.toLowerCase();
+      const patIdx = PATTERN_KEYS.indexOf(k as typeof PATTERN_KEYS[number]);
+      if (patIdx >= 0 && patIdx < patternsRef.current.length) {
+        if (leftPresentRef.current) return;
+        patternIndexRef.current = patIdx;
+        setPatternIndex(patIdx);
+        void ensureAudio();
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      const num = parseInt(e.key, 10);
+      if (Number.isFinite(num) && num >= 1 && num <= chordCountRef.current) {
+        const i = heldChordKeys.indexOf(num);
+        if (i >= 0) heldChordKeys.splice(i, 1);
+        if (rightPresentRef.current) return;
+        if (heldChordKeys.length === 0) {
+          chordIndexRef.current = null;
+          setChordIndex(null);
+        } else {
+          const last = heldChordKeys[heldChordKeys.length - 1];
+          chordIndexRef.current = last - 1;
+          setChordIndex(last - 1);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [ensureAudio]);
+
+  const handleChordClick = useCallback(
+    (idx: number) => {
+      if (rightPresentRef.current) return; // hand wins
+      void ensureAudio();
+      // Toggle: same chord clicked again = release.
+      if (chordIndexRef.current === idx) {
+        chordIndexRef.current = null;
+        setChordIndex(null);
+      } else {
+        chordIndexRef.current = idx;
+        setChordIndex(idx);
+      }
+    },
+    [ensureAudio],
+  );
+
+  const handlePatternClick = useCallback(
+    (idx: number) => {
+      if (leftPresentRef.current) return;
+      void ensureAudio();
+      patternIndexRef.current = idx;
+      setPatternIndex(idx);
+    },
+    [ensureAudio],
+  );
 
   const handlePresetClick = (presetId: string) => {
     const preset = VIBE_PRESETS.find((p) => p.id === presetId);
@@ -413,11 +510,18 @@ export default function AirSynthStage() {
         label={
           leftGesture
             ? `left hand · ${patterns[patternIndex]?.gestureLabel ?? "gesture"}`
-            : "left hand · hold a gesture"
+            : "left hand · hold a gesture · or press Q W E R T Y U I"
         }
         showRings={false}
         renderItem={(p: Pattern, i, active) => (
-          <PatternBadge pattern={p} active={active} stepIndex={active ? stepIndex : -1} />
+          <PatternBadge
+            pattern={p}
+            active={active}
+            stepIndex={active ? stepIndex : -1}
+            shortcut={PATTERN_KEYS[i]?.toUpperCase()}
+            onClick={() => handlePatternClick(i)}
+            clickable={!leftPresent}
+          />
         )}
       />
       <RadialReel
@@ -426,10 +530,16 @@ export default function AirSynthStage() {
         activeIndex={chordIndex}
         handPresent={rightPresent}
         accent="cyan"
-        label="right hand · point at a chord"
+        label="right hand · point at a chord · or press 1..7"
         showRings
         renderItem={(c: ChordSlot, i, active) => (
-          <ChordBadge slot={c} active={active} />
+          <ChordBadge
+            slot={c}
+            active={active}
+            shortcut={String(i + 1)}
+            onClick={() => handleChordClick(i)}
+            clickable={!rightPresent}
+          />
         )}
       />
 
@@ -562,11 +672,28 @@ function RadialReel<T>({
   );
 }
 
-function ChordBadge({ slot, active }: { slot: ChordSlot; active: boolean }) {
+function ChordBadge({
+  slot,
+  active,
+  shortcut,
+  onClick,
+  clickable,
+}: {
+  slot: ChordSlot;
+  active: boolean;
+  shortcut?: string;
+  onClick?: () => void;
+  clickable?: boolean;
+}) {
   const palette = FUNCTION_COLORS[slot.function];
   return (
-    <div
-      className="rounded-2xl border px-4 py-2.5 text-center backdrop-blur-sm transition-all"
+    <button
+      type="button"
+      onClick={clickable ? onClick : undefined}
+      disabled={!clickable}
+      className={`relative rounded-2xl border px-4 py-2.5 text-center backdrop-blur-sm transition-all ${
+        clickable ? "cursor-pointer pointer-events-auto" : "cursor-default"
+      }`}
       style={{
         minWidth: 96,
         background: active
@@ -576,6 +703,14 @@ function ChordBadge({ slot, active }: { slot: ChordSlot; active: boolean }) {
         boxShadow: active ? `0 0 40px ${palette.glow}` : undefined,
       }}
     >
+      {shortcut && (
+        <span
+          className="absolute top-1 left-1.5 text-[9px] font-mono text-white/40 leading-none"
+          aria-hidden
+        >
+          {shortcut}
+        </span>
+      )}
       <div className={`font-mono text-xl ${active ? "text-white" : "text-white/70"}`}>
         {slot.romanNumeral}
       </div>
@@ -585,7 +720,7 @@ function ChordBadge({ slot, active }: { slot: ChordSlot; active: boolean }) {
       <div className="text-[9px] text-white/40 mt-0.5">
         {slot.notes.map((n) => n.replace(/\d/g, "")).join(" ")}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -593,14 +728,25 @@ function PatternBadge({
   pattern,
   active,
   stepIndex,
+  shortcut,
+  onClick,
+  clickable,
 }: {
   pattern: Pattern;
   active: boolean;
   stepIndex: number;
+  shortcut?: string;
+  onClick?: () => void;
+  clickable?: boolean;
 }) {
   return (
-    <div
-      className="rounded-2xl border px-3.5 py-2 text-center backdrop-blur-sm transition-all"
+    <button
+      type="button"
+      onClick={clickable ? onClick : undefined}
+      disabled={!clickable}
+      className={`relative rounded-2xl border px-3.5 py-2 text-center backdrop-blur-sm transition-all ${
+        clickable ? "cursor-pointer pointer-events-auto" : "cursor-default"
+      }`}
       style={{
         minWidth: 108,
         background: active
@@ -610,6 +756,14 @@ function PatternBadge({
         boxShadow: active ? "0 0 40px rgba(167,139,250,0.4)" : undefined,
       }}
     >
+      {shortcut && (
+        <span
+          className="absolute top-1 left-1.5 text-[9px] font-mono text-white/40 leading-none"
+          aria-hidden
+        >
+          {shortcut}
+        </span>
+      )}
       <div className="text-2xl leading-none mb-0.5" aria-hidden>
         {pattern.icon}
       </div>
@@ -639,7 +793,7 @@ function PatternBadge({
           );
         })}
       </div>
-    </div>
+    </button>
   );
 }
 

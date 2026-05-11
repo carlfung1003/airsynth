@@ -27,8 +27,9 @@ const FUNCTION_BY_DEGREE: Record<number, ChordSlot["function"]> = {
 const ROMAN_MAJOR = ["I", "ii", "iii", "IV", "V", "vi", "vii°"];
 const ROMAN_MINOR = ["i", "ii°", "III", "iv", "v", "VI", "VII"];
 
-// Six diatonic chords: I, ii, iii, IV, V, vi — skip vii° which is dissonant.
-export const CHORD_DEGREES = [0, 1, 2, 3, 4, 5] as const;
+// All 7 diatonic chords — I, ii, iii, IV, V, vi, vii° — so keyboard
+// shortcuts 1..7 cover the full set.
+export const CHORD_DEGREES = [0, 1, 2, 3, 4, 5, 6] as const;
 
 const CHROMATIC_INDEX: Record<string, number> = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
