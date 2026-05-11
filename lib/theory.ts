@@ -5,6 +5,8 @@ export type ScaleType = "major" | "minor" | "dorian" | "mixolydian";
 
 export type ChordStyle = "triad" | "seventh";
 
+export type Instrument = "piano" | "guitar";
+
 export type ChordSlot = {
   romanNumeral: string;
   symbol: string;
@@ -157,7 +159,7 @@ export type Pattern = {
   steps: PatternStep[]; // each step = one 8th note
 };
 
-export const PATTERNS: Pattern[] = [
+export const PIANO_PATTERNS: Pattern[] = [
   {
     id: "stride",
     label: "Stride",
@@ -231,6 +233,96 @@ export const PATTERNS: Pattern[] = [
     steps: [[8], [5], [3], [1], [8], [5], [3], [1]],
   },
 ];
+
+// Guitar fingerpicking voicing:
+//   t = thumb → bass note (root, octave down) = degree -1
+//   1 = finger 1 (G string)  → degree 3 (the 3rd)
+//   2 = finger 2 (B string)  → degree 5 (the 5th)
+//   3 = finger 3 (high E)    → degree 8 (root, octave up)
+// Tokens with multiple digits (e.g. 23 or 123) mean those fingers pluck
+// together — short mini-strums inside the picking pattern.
+export const GUITAR_PATTERNS: Pattern[] = [
+  {
+    id: "strum",
+    label: "Strum",
+    description: "Steady acoustic — chord per beat",
+    gesture: "open",
+    icon: "🖐",
+    gestureLabel: "Open hand",
+    steps: [[0], [], [0], [], [0], [], [0], []],
+  },
+  {
+    id: "stab",
+    label: "Stab",
+    description: "Chord on beats 1 & 3 — slow ballad",
+    gesture: "fist",
+    icon: "👊",
+    gestureLabel: "Fist",
+    steps: [[0], [], [], [], [0], [], [], []],
+  },
+  {
+    id: "travis",
+    label: "Travis",
+    description: "t 1 2 1 3 1 2 1 — fingerstyle classic",
+    gesture: "index",
+    icon: "☝️",
+    gestureLabel: "Index",
+    steps: [[-1], [3], [5], [3], [8], [3], [5], [3]],
+  },
+  {
+    id: "pluck",
+    label: "Pluck",
+    description: "t 1 23 1 — pop ballad fingerpick",
+    gesture: "peace",
+    icon: "✌️",
+    gestureLabel: "Peace",
+    steps: [[-1], [3], [5, 8], [3], [-1], [3], [5, 8], [3]],
+  },
+  {
+    id: "classical",
+    label: "Classical",
+    description: "t 1 2 3 — p-i-m-a ascending",
+    gesture: "three",
+    icon: "🤟",
+    gestureLabel: "Three fingers",
+    steps: [[-1], [3], [5], [8], [-1], [3], [5], [8]],
+  },
+  {
+    id: "country",
+    label: "Country",
+    description: "t · chord — boom-chick",
+    gesture: "thumb",
+    icon: "👍",
+    gestureLabel: "Thumbs up",
+    steps: [[-1], [], [0], [], [-1], [], [0], []],
+  },
+  {
+    id: "altbass",
+    label: "Alt Bass",
+    description: "Carter — root / chord / 5th / chord",
+    gesture: "rock",
+    icon: "🤘",
+    gestureLabel: "Rock-on",
+    steps: [[-1], [0], [-5], [0], [-1], [0], [-5], [0]],
+  },
+  {
+    id: "falling",
+    label: "Falling",
+    description: "3 2 1 t — reverse pick",
+    gesture: "hangloose",
+    icon: "🤙",
+    gestureLabel: "Hang loose",
+    steps: [[8], [5], [3], [-1], [8], [5], [3], [-1]],
+  },
+];
+
+// Backward-compatible alias — defaults to piano patterns for callers that
+// don't yet know about the guitar mode.
+export const PATTERNS = PIANO_PATTERNS;
+
+export function getPatterns(instrument: Instrument): Pattern[] {
+  return instrument === "guitar" ? GUITAR_PATTERNS : PIANO_PATTERNS;
+}
 
 export function notesForStep(chordNotes: string[], degrees: PatternStep): string[] {
   if (!chordNotes.length) return [];

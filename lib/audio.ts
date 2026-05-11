@@ -1,7 +1,7 @@
 "use client";
 
 import * as Tone from "tone";
-import { Pattern, notesForStep } from "./theory";
+import { Instrument, Pattern, notesForStep } from "./theory";
 
 const SALAMANDER_BASE = "https://tonejs.github.io/audio/salamander/";
 
@@ -33,8 +33,16 @@ const PIANO_SAMPLE_MAP: Record<string, string> = {
   A6: "A6.mp3",
 };
 
+const GUITAR_POLYPHONY = 6;
+
 class AudioEngine {
   private piano: Tone.Sampler | null = null;
+  // Manual pool of PluckSynth voices — Tone.PluckSynth isn't Monophonic-typed,
+  // so Tone.PolySynth(Tone.PluckSynth) won't compile. Round-robin assignment.
+  private guitarPool: Tone.PluckSynth[] = [];
+  private guitarPoolIdx = 0;
+  private guitarVolume: Tone.Volume | null = null;
+  private instrument: Instrument = "piano";
   private droneSynth: Tone.PolySynth | null = null;
   private droneFilter: Tone.Filter | null = null;
   private droneActive = false;
@@ -78,6 +86,21 @@ class AudioEngine {
         release: 1.2,
       });
 
+      // PluckSynth = Karplus-Strong physical model. PluckSynth isn't typed as
+      // Monophonic so it can't go inside PolySynth — pool 6 voices manually.
+      this.guitarVolume = new Tone.Volume(-4).toDestination();
+      this.guitarVolume.connect(this.analyser);
+      for (let i = 0; i < GUITAR_POLYPHONY; i++) {
+        const voice = new Tone.PluckSynth({
+          attackNoise: 0.6,
+          dampening: 3800,
+          resonance: 0.85,
+        });
+        voice.connect(this.chordReverb);
+        voice.connect(this.guitarVolume);
+        this.guitarPool.push(voice);
+      }
+
       this.droneFilter = new Tone.Filter(700, "lowpass").connect(this.droneVolume);
       this.droneSynth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: "sine" },
@@ -98,6 +121,14 @@ class AudioEngine {
 
   setBpm(bpm: number): void {
     Tone.Transport.bpm.value = bpm;
+  }
+
+  setInstrument(inst: Instrument): void {
+    this.instrument = inst;
+  }
+
+  getInstrument(): Instrument {
+    return this.instrument;
   }
 
   setChord(notes: string[]): void {
@@ -129,10 +160,20 @@ class AudioEngine {
       }
       const idx = this.stepCounter % pattern.steps.length;
       const step = pattern.steps[idx];
-      if (step.length && this.piano) {
+      if (step.length) {
         const notes = notesForStep(chord, step);
         const velocity = step.length > 1 ? 0.55 : 0.7;
-        this.piano.triggerAttackRelease(notes, "16n", time, velocity);
+        if (this.instrument === "guitar" && this.guitarPool.length) {
+          // PluckSynth.triggerAttack(note, time) — no velocity param;
+          // overall level comes from this.guitarVolume.
+          for (const note of notes) {
+            const voice = this.guitarPool[this.guitarPoolIdx];
+            this.guitarPoolIdx = (this.guitarPoolIdx + 1) % this.guitarPool.length;
+            voice.triggerAttack(note, time);
+          }
+        } else if (this.piano) {
+          this.piano.triggerAttackRelease(notes, "16n", time, velocity);
+        }
       }
       this.stepCounter++;
     }, "8n");

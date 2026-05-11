@@ -14,12 +14,13 @@ import {
   ChordSlot,
   ChordStyle,
   FUNCTION_COLORS,
+  Instrument,
   KEYS,
-  PATTERNS,
   Pattern,
   ScaleType,
   VIBE_PRESETS,
   getChordSlots,
+  getPatterns,
 } from "@/lib/theory";
 
 const SCALE_TYPES: ScaleType[] = ["major", "minor", "dorian", "mixolydian"];
@@ -63,10 +64,13 @@ export default function AirSynthStage() {
   const [rootKey, setRootKey] = useState("C");
   const [scaleType, setScaleType] = useState<ScaleType>("major");
   const [chordStyle, setChordStyle] = useState<ChordStyle>("triad");
+  const [instrument, setInstrument] = useState<Instrument>("piano");
   const [audioReady, setAudioReady] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [droneEnabled, setDroneEnabled] = useState(true);
   const [showCustomKey, setShowCustomKey] = useState(false);
+
+  const patterns = useMemo(() => getPatterns(instrument), [instrument]);
 
   const [chordIndex, setChordIndex] = useState<number | null>(null);
   const [patternIndex, setPatternIndex] = useState(0);
@@ -114,8 +118,13 @@ export default function AirSynthStage() {
 
   useEffect(() => {
     if (!audioReady) return;
-    getAudioEngine().setPattern(PATTERNS[patternIndex] ?? null);
-  }, [audioReady, patternIndex]);
+    getAudioEngine().setPattern(patterns[patternIndex] ?? null);
+  }, [audioReady, patternIndex, patterns]);
+
+  useEffect(() => {
+    if (!audioReady) return;
+    getAudioEngine().setInstrument(instrument);
+  }, [audioReady, instrument]);
 
   useEffect(() => {
     if (!audioReady) return;
@@ -132,9 +141,11 @@ export default function AirSynthStage() {
   const leftGeoRef = useRef(leftGeo);
   const rightGeoRef = useRef(rightGeo);
   const chordCountRef = useRef(chords.length);
+  const patternsRef = useRef(patterns);
   useEffect(() => { leftGeoRef.current = leftGeo; }, [leftGeo]);
   useEffect(() => { rightGeoRef.current = rightGeo; }, [rightGeo]);
   useEffect(() => { chordCountRef.current = chords.length; }, [chords.length]);
+  useEffect(() => { patternsRef.current = patterns; }, [patterns]);
 
   useEffect(() => {
     if (!trackingStarted) return;
@@ -162,7 +173,7 @@ export default function AirSynthStage() {
         setLeftCursor({ x: frame.left.x, y: frame.left.y });
         setLeftGesture(frame.left.gesture);
         if (frame.left.gesture) {
-          const next = PATTERNS.findIndex((p) => p.gesture === frame.left.gesture);
+          const next = patternsRef.current.findIndex((p) => p.gesture === frame.left.gesture);
           if (next >= 0 && next !== patternIndexRef.current) {
             patternIndexRef.current = next;
             setPatternIndex(next);
@@ -251,7 +262,7 @@ export default function AirSynthStage() {
     setScaleType(preset.scaleType);
     setChordStyle(preset.chordStyle ?? "triad");
     if (preset.defaultPatternId) {
-      const idx = PATTERNS.findIndex((p) => p.id === preset.defaultPatternId);
+      const idx = patterns.findIndex((p) => p.id === preset.defaultPatternId);
       if (idx >= 0) {
         patternIndexRef.current = idx;
         setPatternIndex(idx);
@@ -300,6 +311,24 @@ export default function AirSynthStage() {
             {rootKey} {scaleType}
             {chordStyle === "seventh" && <span className="text-yellow-200/90"> · 7ths</span>}
           </span>
+          <div className="flex items-center gap-1 rounded-full bg-white/5 border border-white/10 p-0.5">
+            <button
+              onClick={() => setInstrument("piano")}
+              className={`text-[10px] px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                instrument === "piano" ? "bg-white/15 text-white" : "text-white/55 hover:text-white"
+              }`}
+            >
+              🎹 Piano
+            </button>
+            <button
+              onClick={() => setInstrument("guitar")}
+              className={`text-[10px] px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                instrument === "guitar" ? "bg-amber-500/30 text-amber-100" : "text-white/55 hover:text-white"
+              }`}
+            >
+              🎸 Guitar
+            </button>
+          </div>
           <div className="flex items-center gap-1 rounded-full bg-white/5 border border-white/10 p-0.5">
             <button
               onClick={() => setChordStyle("triad")}
@@ -377,13 +406,13 @@ export default function AirSynthStage() {
 
       <RadialReel
         geo={leftGeo}
-        items={PATTERNS}
+        items={patterns}
         activeIndex={patternIndex}
         handPresent={leftPresent}
         accent="purple"
         label={
           leftGesture
-            ? `left hand · ${PATTERNS[patternIndex]?.gestureLabel ?? "gesture"}`
+            ? `left hand · ${patterns[patternIndex]?.gestureLabel ?? "gesture"}`
             : "left hand · hold a gesture"
         }
         showRings={false}
