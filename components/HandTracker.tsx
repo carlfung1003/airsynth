@@ -6,10 +6,42 @@ import {
   EMPTY_HAND,
   GESTURE_FRAME_EVENT,
   GESTURE_PINCH_EVENT,
+  HandGesture,
   HandState,
   GestureFrame,
   PinchEventDetail,
 } from "@/lib/gesture-types";
+
+type Landmark = { x: number; y: number; z: number };
+
+function detectGesture(hand: Landmark[]): HandGesture {
+  // Each finger is "extended" when its tip is significantly above its PIP
+  // joint (in image y-coords where smaller = higher on screen). Threshold is
+  // forgiving to account for the user's hand orientation drifting.
+  const fingerUp = (tip: number, pip: number) => hand[tip].y < hand[pip].y - 0.03;
+  const i = fingerUp(8, 6);
+  const m = fingerUp(12, 10);
+  const r = fingerUp(16, 14);
+  const p = fingerUp(20, 18);
+  // Thumb extension: distance from thumb tip (4) to index MCP (5). When the
+  // thumb is tucked into a fist it sits ~0.05 away; when extended outward
+  // (open hand, thumbs up) it sits 0.13+ away.
+  const dt = Math.hypot(hand[4].x - hand[5].x, hand[4].y - hand[5].y);
+  const t = dt > 0.11;
+  const code =
+    (t ? 16 : 0) | (i ? 8 : 0) | (m ? 4 : 0) | (r ? 2 : 0) | (p ? 1 : 0);
+  switch (code) {
+    case 0b00000: return "fist";
+    case 0b11111: return "open";
+    case 0b01000: return "index";
+    case 0b01100: return "peace";
+    case 0b01110: return "three";
+    case 0b10000: return "thumb";
+    case 0b01001: return "rock";
+    case 0b10001: return "hangloose";
+  }
+  return null;
+}
 
 const PINCH_ON = 0.05;
 const PINCH_OFF = 0.07;
@@ -122,16 +154,17 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
     for (let i = 0; i < hands.length; i++) {
       const hand = hands[i];
       const label = handednesses[i]?.[0]?.categoryName ?? "Right";
-      // MediaPipe handedness is from the camera's perspective, so for a
-      // selfie-view (mirrored) camera we flip: "Right" hand from camera =
-      // user's left hand on screen.
-      const handKey: "left" | "right" = label === "Right" ? "left" : "right";
+      // MediaPipe returns anatomical handedness directly — "Right" = the
+      // user's right hand, regardless of where it appears in the frame.
+      const handKey: "left" | "right" = label === "Right" ? "right" : "left";
 
       const thumb = hand[4];
       const index = hand[8];
       const dist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
-      const rawX = (thumb.x + index.x) / 2;
-      const rawY = (thumb.y + index.y) / 2;
+      // Publish the index fingertip as the cursor — radial reels use
+      // "point at the slice" as the selection gesture.
+      const rawX = index.x;
+      const rawY = index.y;
 
       // Mirror X for selfie-view.
       const targetX = (1 - rawX) * window.innerWidth;
@@ -158,6 +191,7 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
         y: sy,
         pinch: nextPinch,
         pinchDistance: dist,
+        gesture: detectGesture(hand),
       };
       if (handKey === "left") left = state;
       else right = state;
@@ -202,7 +236,7 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
     for (let i = 0; i < lm.length; i++) {
       const hand = lm[i];
       const label = handednesses[i]?.[0]?.categoryName ?? "Right";
-      const isLeftHand = label === "Right"; // mirrored
+      const isLeftHand = label === "Left";
       const lineColor = isLeftHand ? "rgba(167, 139, 250, 0.85)" : "rgba(103, 232, 249, 0.85)";
       const tipColor = isLeftHand ? "#a78bfa" : "#67e8f9";
 

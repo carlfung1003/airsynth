@@ -1,6 +1,7 @@
 "use client";
 
 import * as Tone from "tone";
+import { Pattern, notesForStep } from "./theory";
 
 const SALAMANDER_BASE = "https://tonejs.github.io/audio/salamander/";
 
@@ -38,11 +39,19 @@ class AudioEngine {
   private droneFilter: Tone.Filter | null = null;
   private droneActive = false;
   private droneNotes: string[] = [];
+
   private analyser: Tone.Analyser | null = null;
   private chordVolume: Tone.Volume | null = null;
-  private melodyVolume: Tone.Volume | null = null;
   private droneVolume: Tone.Volume | null = null;
   private chordReverb: Tone.Reverb | null = null;
+
+  private loop: Tone.Loop | null = null;
+  private currentChord: string[] = [];
+  private currentPattern: Pattern | null = null;
+  private stepCounter = 0;
+  private loopRunning = false;
+  private chordChangedAt = -1; // step index when chord last changed
+
   private ready = false;
   private loadingPromise: Promise<void> | null = null;
 
@@ -52,26 +61,21 @@ class AudioEngine {
 
     this.loadingPromise = (async () => {
       await Tone.start();
+      Tone.Transport.bpm.value = 110;
 
       this.analyser = new Tone.Analyser("fft", 64);
 
-      this.chordVolume = new Tone.Volume(-6).toDestination();
+      this.chordVolume = new Tone.Volume(-8).toDestination();
       this.chordVolume.connect(this.analyser);
-      this.chordReverb = new Tone.Reverb({ decay: 4, wet: 0.35 }).connect(this.chordVolume);
+      this.chordReverb = new Tone.Reverb({ decay: 4, wet: 0.32 }).connect(this.chordVolume);
 
-      this.melodyVolume = new Tone.Volume(-2).toDestination();
-      this.melodyVolume.connect(this.analyser);
-
-      this.droneVolume = new Tone.Volume(-18).toDestination();
+      this.droneVolume = new Tone.Volume(-20).toDestination();
       this.droneVolume.connect(this.analyser);
 
       this.piano = new Tone.Sampler({
         urls: PIANO_SAMPLE_MAP,
         baseUrl: SALAMANDER_BASE,
-        release: 1.4,
-        onload: () => {
-          this.ready = true;
-        },
+        release: 1.2,
       });
 
       this.droneFilter = new Tone.Filter(700, "lowpass").connect(this.droneVolume);
@@ -82,7 +86,6 @@ class AudioEngine {
 
       await Tone.loaded();
       this.piano.connect(this.chordReverb);
-      this.piano.connect(this.melodyVolume);
       this.ready = true;
     })();
 
@@ -93,14 +96,65 @@ class AudioEngine {
     return this.ready;
   }
 
-  playChord(notes: string[], duration = "2n", velocity = 0.7): void {
-    if (!this.ready || !this.piano) return;
-    this.piano.triggerAttackRelease(notes, duration, undefined, velocity);
+  setBpm(bpm: number): void {
+    Tone.Transport.bpm.value = bpm;
   }
 
-  playNote(note: string, duration = "8n", velocity = 0.8): void {
-    if (!this.ready || !this.piano) return;
-    this.piano.triggerAttackRelease(note, duration, undefined, velocity);
+  setChord(notes: string[]): void {
+    const wasEmpty = this.currentChord.length === 0;
+    const sameNotes = notes.join(",") === this.currentChord.join(",");
+    this.currentChord = notes;
+    if (!sameNotes) this.chordChangedAt = this.stepCounter;
+    // When transitioning from silence into a chord, restart the pattern at
+    // step 0 so the user always hears the downbeat of the pattern on their
+    // first chord. Mid-loop chord swaps continue from where they are so the
+    // groove keeps its phase.
+    if (wasEmpty && notes.length > 0) this.stepCounter = 0;
+  }
+
+  setPattern(pattern: Pattern | null): void {
+    this.currentPattern = pattern;
+  }
+
+  startLoop(): void {
+    if (!this.ready || this.loopRunning) return;
+    this.stepCounter = 0;
+    this.chordChangedAt = 0;
+    this.loop = new Tone.Loop((time) => {
+      const chord = this.currentChord;
+      const pattern = this.currentPattern;
+      if (!chord.length || !pattern) {
+        this.stepCounter++;
+        return;
+      }
+      const idx = this.stepCounter % pattern.steps.length;
+      const step = pattern.steps[idx];
+      if (step.length && this.piano) {
+        const notes = notesForStep(chord, step);
+        const velocity = step.length > 1 ? 0.55 : 0.7;
+        this.piano.triggerAttackRelease(notes, "16n", time, velocity);
+      }
+      this.stepCounter++;
+    }, "8n");
+    this.loop.start(0);
+    if (Tone.Transport.state !== "started") Tone.Transport.start();
+    this.loopRunning = true;
+  }
+
+  stopLoop(): void {
+    if (this.loop) {
+      this.loop.stop();
+      this.loop.dispose();
+      this.loop = null;
+    }
+    if (Tone.Transport.state === "started") Tone.Transport.stop();
+    this.loopRunning = false;
+    this.stepCounter = 0;
+  }
+
+  getStepIndex(): number {
+    if (!this.currentPattern) return -1;
+    return this.stepCounter % this.currentPattern.steps.length;
   }
 
   startDrone(rootNote: string): void {
