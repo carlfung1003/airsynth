@@ -699,14 +699,17 @@ export function expectedChordSymbol(song: Song, cursor: SongCursor): string | nu
   return sectionChordSymbols(section)[cursor.chordIdx] ?? null;
 }
 
-// Shift a bare pitch class ("C", "F#", "Bb") by N semitones. Falls back to
-// sharps; downstream Tonal calls (Chord.get) accept both. Used by transpose.
+// Shift a bare pitch class ("C", "F#", "Bb") by N semitones. Output uses
+// sharps so transposed songs stay consistent with the existing chart
+// convention (F# / C# / G# rather than Gb / Db / Ab); downstream Tonal calls
+// (Chord.get) accept both.
+const SHARP_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 export function transposePitchClass(pc: string, semitones: number): string {
   if (semitones === 0) return pc;
   const midi = Note.midi(`${pc}4`);
   if (midi == null) return pc;
-  const transposed = Note.fromMidi(midi + semitones);
-  return transposed.replace(/\d+$/, "");
+  const newMidi = midi + semitones;
+  return SHARP_NAMES[((newMidi % 12) + 12) % 12];
 }
 
 // Shift a chord symbol ("A/G#", "F#m7b5", "C6/9", "E9") by N semitones.

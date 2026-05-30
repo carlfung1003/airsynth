@@ -7,8 +7,11 @@ Live: [airsynth.carlfung.dev](https://airsynth.carlfung.dev)
 ## Practice mode & two-hand commands
 
 - **Tempo slider** (50%–150%) scales the song's authored BPM and any loaded backing track in lock-step — slow Marry You to 70% to learn the changes, then ramp back up
-- **Transpose** (±6 semitones) shifts the active song's chord palette + engine root live so singers can drop a song into their vocal range without rewriting source data. The header readout shows the original key, the effective key, and the offset. Resets to 0 on song change.
-- **Chord diagrams** — a mini piano-key strip floats below the chord ribbon showing every pitch class in the currently-held chord, with the root highlighted amber. Works for diatonic chords, 7ths, slash chords, and extended chords (♭9, ♯11, etc.) since it's derived directly from the resolved voicing.
+- **Transpose** (±6 semitones) shifts the active song's chord palette + engine root live so singers can drop a song into their vocal range without rewriting source data. The header readout shows the original key, the effective key, and the offset. Sharps stay sharps (F# / C# / G#) for chord-chart consistency. Resets to 0 on song change.
+- **Section navigation** — the chord ribbon's top row shows every section in the song's structure as a clickable chip (verse · bridge · chorus · break …). Click to jump the cursor. The current section is highlighted amber. Pairs with the two-hand 👍👍 / ☝️☝️ commands for the same job.
+- **Chord diagrams** — pop up below the chord ribbon whenever a chord is held.
+  - **Piano mode** — universal mini-keyboard with chord-tone pitch classes lit cyan and the root highlighted amber. Derives directly from the resolved voicing, so it works for diatonic chords, 7ths, slash chords, and extended chords (♭9, ♯11, etc.).
+  - **Guitar mode** — open-position fretboard with a barre rectangle, finger dots, and open/muted indicators. Hardcoded shapes cover the standard pop chord vocabulary plus the slash chords used by the shipped songs; any symbol outside the table falls back to the piano diagram.
 - **Section loop** keeps the cursor inside the current section instead of advancing to the next — run a chorus until the chord shapes are automatic
 - **Two-hand commands** (hold ~200ms with both hands in the same shape):
   - ✊ ✊ both fists → toggle pause

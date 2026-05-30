@@ -51,6 +51,9 @@ import {
 } from "@/lib/lyrics";
 
 const SCALE_TYPES: ScaleType[] = ["major", "minor", "dorian", "mixolydian"];
+// Fallback when the header hasn't been measured yet (first paint). The
+// header's real height grows with piano-flavors, fillers row, and the songs
+// dropdown, so floaters below it use a ResizeObserver-driven value instead.
 const HEADER_HEIGHT = 64;
 const DEAD_ZONE_RATIO = 0.32; // fraction of outer radius
 const ITEM_RADIUS_RATIO = 0.78;
@@ -219,6 +222,8 @@ export default function AirSynthStage() {
 
   const [trackingStarted, setTrackingStarted] = useState(false);
   const [viewport, setViewport] = useState<Viewport>({ w: 1280, h: 720 });
+  const [headerHeight, setHeaderHeight] = useState(HEADER_HEIGHT);
+  const headerRef = useRef<HTMLDivElement>(null);
 
   const chordIndexRef = useRef<number | null>(null);
   const patternIndexRef = useRef(0);
@@ -259,6 +264,19 @@ export default function AirSynthStage() {
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Track the real header height — it changes when piano-flavor row, fills
+  // row, or songs/custom-key dropdown opens/closes. Floaters below the header
+  // use this so they never get covered.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const measure = () => setHeaderHeight(el.getBoundingClientRect().height);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   useEffect(() => {
@@ -776,7 +794,7 @@ export default function AirSynthStage() {
     <div className="relative min-h-screen w-screen overflow-hidden text-white">
       <Visualizer />
 
-      <div className="fixed inset-x-0 top-0 z-30 px-4 py-3 flex flex-wrap items-center gap-2 backdrop-blur-md bg-black/30 border-b border-white/10">
+      <div ref={headerRef} className="fixed inset-x-0 top-0 z-30 px-4 py-3 flex flex-wrap items-center gap-2 backdrop-blur-md bg-black/30 border-b border-white/10">
         <h1 className="font-semibold text-sm tracking-[0.3em] uppercase mr-3">AirSynth</h1>
         <div className="flex flex-wrap gap-2">
           {VIBE_PRESETS.map((preset) => {
@@ -1145,7 +1163,7 @@ export default function AirSynthStage() {
       {song && (lyricView || lyricsStatus !== "idle") && (
         <div
           className="fixed left-1/2 -translate-x-1/2 z-20 pointer-events-none w-[min(720px,92vw)] text-center"
-          style={{ top: HEADER_HEIGHT + 88 }}
+          style={{ top: headerHeight + 110 }}
         >
           <div className="px-4 py-3 rounded-xl backdrop-blur-md bg-black/35 border border-white/10">
             {lyricsStatus === "loading" && (
@@ -1176,49 +1194,73 @@ export default function AirSynthStage() {
       {song && currentSection && (
         <div
           className="fixed left-1/2 -translate-x-1/2 z-20 pointer-events-auto"
-          style={{ top: HEADER_HEIGHT + 12 }}
+          style={{ top: headerHeight + 8 }}
         >
-          <div className="flex items-center gap-3 px-4 py-2 rounded-xl backdrop-blur-md bg-black/40 border border-white/10">
-            <div className="text-[10px] uppercase tracking-[0.25em] whitespace-nowrap">
-              <span className="text-amber-200/85">{currentSection.label}</span>
-              <span className="text-white/25 mx-1.5">·</span>
-              <span className="text-white/55 font-mono normal-case tracking-normal">
-                {songCursor.structureIdx + 1}/{song.structure.length}
-              </span>
-              {song.chartUrl && (
-                <>
-                  <span className="text-white/25 mx-1.5">·</span>
-                  <a
-                    href={song.chartUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-white/40 hover:text-white/75 normal-case tracking-normal underline-offset-2 hover:underline"
-                    title={`Chord chart from ${song.chartSource ?? "external source"}`}
-                  >
-                    chart ↗
-                  </a>
-                </>
-              )}
-            </div>
-            <div className="flex gap-1.5">
-              {sectionChordSymbols(currentSection).map((symbol, i) => {
-                const isExpected = i === songCursor.chordIdx;
+          <div className="flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl backdrop-blur-md bg-black/40 border border-white/10">
+            {/* Clickable section strip — jump to any verse / chorus / bridge */}
+            <div className="flex items-center gap-0.5 flex-wrap justify-center max-w-[78vw]">
+              {song.structure.map((id, i) => {
+                const sec = song.sections.find((s) => s.id === id);
+                if (!sec) return null;
+                const active = i === songCursor.structureIdx;
                 return (
-                  <div
+                  <button
                     key={i}
-                    className={`min-w-[42px] text-center rounded-md px-1.5 py-1 transition-all border ${
-                      isExpected
-                        ? "bg-amber-400/25 border-amber-300/70"
-                        : "bg-white/[0.04] border-white/10"
+                    onClick={() => setSongCursor({ structureIdx: i, chordIdx: 0 })}
+                    title={`Jump to ${sec.label} (${i + 1}/${song.structure.length})`}
+                    className={`text-[9px] uppercase tracking-[0.2em] px-2 py-0.5 rounded transition-all cursor-pointer border ${
+                      active
+                        ? "bg-amber-400/30 text-amber-50 border-amber-300/60"
+                        : "text-white/55 hover:text-white hover:bg-white/10 border-transparent"
                     }`}
-                    style={{ transform: isExpected ? "scale(1.08)" : undefined }}
                   >
-                    <div className={`text-[12px] font-mono leading-tight ${isExpected ? "text-amber-50" : "text-white/70"}`}>
-                      {prettyChordSymbol(symbol)}
-                    </div>
-                  </div>
+                    {sec.label}
+                  </button>
                 );
               })}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-[10px] uppercase tracking-[0.25em] whitespace-nowrap">
+                <span className="text-amber-200/85">{currentSection.label}</span>
+                <span className="text-white/25 mx-1.5">·</span>
+                <span className="text-white/55 font-mono normal-case tracking-normal">
+                  {songCursor.structureIdx + 1}/{song.structure.length}
+                </span>
+                {song.chartUrl && (
+                  <>
+                    <span className="text-white/25 mx-1.5">·</span>
+                    <a
+                      href={song.chartUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white/40 hover:text-white/75 normal-case tracking-normal underline-offset-2 hover:underline"
+                      title={`Chord chart from ${song.chartSource ?? "external source"}`}
+                    >
+                      chart ↗
+                    </a>
+                  </>
+                )}
+              </div>
+              <div className="flex gap-1.5">
+                {sectionChordSymbols(currentSection).map((symbol, i) => {
+                  const isExpected = i === songCursor.chordIdx;
+                  return (
+                    <div
+                      key={i}
+                      className={`min-w-[42px] text-center rounded-md px-1.5 py-1 transition-all border ${
+                        isExpected
+                          ? "bg-amber-400/25 border-amber-300/70"
+                          : "bg-white/[0.04] border-white/10"
+                      }`}
+                      style={{ transform: isExpected ? "scale(1.08)" : undefined }}
+                    >
+                      <div className={`text-[12px] font-mono leading-tight ${isExpected ? "text-amber-50" : "text-white/70"}`}>
+                        {prettyChordSymbol(symbol)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -1232,6 +1274,7 @@ export default function AirSynthStage() {
         leftGesture={leftGesture}
         patternKeys={PATTERN_KEYS}
         onPatternClick={handlePatternClick}
+        topOffset={headerHeight + 12}
       />
       <RadialReel
         geo={rightGeo}
@@ -1310,7 +1353,7 @@ export default function AirSynthStage() {
             <div className="text-[9px] uppercase tracking-[0.3em] text-amber-200/85 mb-1 font-mono">
               {prettyChordSymbol(chords[chordIndex].symbol)}
             </div>
-            <ChordDiagram slot={chords[chordIndex]} />
+            <ChordDiagram slot={chords[chordIndex]} instrument={instrument} />
           </div>
         </div>
       )}
@@ -1499,6 +1542,7 @@ function PatternColumn({
   leftGesture,
   patternKeys,
   onPatternClick,
+  topOffset,
 }: {
   patterns: Pattern[];
   activeIndex: number;
@@ -1507,11 +1551,12 @@ function PatternColumn({
   leftGesture: HandGesture;
   patternKeys: readonly string[];
   onPatternClick: (i: number) => void;
+  topOffset: number;
 }) {
   return (
     <div
       className="fixed z-20 left-2"
-      style={{ top: HEADER_HEIGHT + 12, width: 400 }}
+      style={{ top: topOffset, width: 400 }}
     >
       <div className="text-[9px] uppercase tracking-[0.3em] text-purple-300/70 pl-1 pb-1">
         {leftGesture
