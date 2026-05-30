@@ -33,8 +33,10 @@ import {
   expectedChordSymbol,
   getSongById,
   getSongPalette,
-  nextCursor,
+  nextCursorLooped,
+  nextSectionCursor,
   phraseWordPositions,
+  previousSectionCursor,
   sectionAt,
   sectionChordSymbols,
 } from "@/lib/songs";
@@ -103,6 +105,15 @@ export default function AirSynthStage() {
   const [lyrics, setLyrics] = useState<MappedLyric[] | null>(null);
   const [lyricsStatus, setLyricsStatus] = useState<"idle" | "loading" | "ready" | "missing">("idle");
   const [paused, setPaused] = useState(false);
+  // Practice controls: scale song BPM (0.5–1.5×) and lock the cursor inside
+  // the current section so you can loop a chorus until you've got it.
+  const [tempoScale, setTempoScale] = useState(1.0);
+  const [sectionLoop, setSectionLoop] = useState(false);
+  // Backing track volume — only meaningful when the active song has one.
+  const [backingVolume, setBackingVolume] = useState(0.55);
+  // Visual indicator for an in-progress two-hand command (clap = pause,
+  // both-thumb = next section, both-index = previous section).
+  const [twoHandHint, setTwoHandHint] = useState<{ combo: string; progress: number } | null>(null);
 
   const song = useMemo(() => getSongById(songId), [songId]);
   const currentSection = useMemo(() => (song ? sectionAt(song, songCursor) : null), [song, songCursor]);
@@ -199,6 +210,14 @@ export default function AirSynthStage() {
   const chordIndexRef = useRef<number | null>(null);
   const patternIndexRef = useRef(0);
   const droneActiveRef = useRef(false);
+  // Two-hand gesture state — when both hands hold the same shape for
+  // SUSTAIN_FRAMES consecutive frames, a section / pause action fires. A
+  // 1s cooldown prevents the same combo from re-firing on the same hold.
+  const twoHandRef = useRef<{ combo: string | null; frames: number; cooldownUntil: number }>({
+    combo: null,
+    frames: 0,
+    cooldownUntil: 0,
+  });
 
   const diatonicChords = useMemo(
     () => getChordSlots(rootKey, scaleType, chordStyle),
@@ -285,19 +304,33 @@ export default function AirSynthStage() {
       engine.setNextChord([]);
       return;
     }
-    const nextCur = nextCursor(song, songCursor);
+    const nextCur = nextCursorLooped(song, songCursor, sectionLoop);
     const nextSym = expectedChordSymbol(song, nextCur);
     if (!nextSym) {
       engine.setNextChord([]);
       return;
     }
     engine.setNextChord(resolveChordSymbol(nextSym).notes);
-  }, [audioReady, song, songCursor]);
+  }, [audioReady, song, songCursor, sectionLoop]);
 
   useEffect(() => {
     if (!audioReady) return;
     getAudioEngine().setPaused(paused);
   }, [audioReady, paused]);
+
+  // BPM = song's authored tempo (or 110 in free-play) multiplied by the
+  // tempo slider. Engine forwards this to the backing track's playbackRate
+  // so the loop stays in sync when you slow a song down to practice.
+  useEffect(() => {
+    if (!audioReady) return;
+    const bpm = (song?.bpm ?? 110) * tempoScale;
+    getAudioEngine().setBpm(bpm);
+  }, [audioReady, song, tempoScale]);
+
+  useEffect(() => {
+    if (!audioReady) return;
+    getAudioEngine().setBackingVolume(backingVolume);
+  }, [audioReady, backingVolume]);
 
   // Backing track: load when a song with one is selected, play when the
   // user starts the loop, pause/resume in sync with the global pause.
@@ -332,7 +365,7 @@ export default function AirSynthStage() {
             chordIndexRef.current !== null &&
             chordIndexRef.current === exp
           ) {
-            setSongCursor((c) => nextCursor(s, c));
+            setSongCursor((c) => nextCursorLooped(s, c, sectionLoopRef.current));
           }
         }
         prevStep = next;
@@ -357,9 +390,11 @@ export default function AirSynthStage() {
   // circuits. Refs let the callback stay stable across renders.
   const songRef = useRef(song);
   const expectedIdxRef = useRef<number | null>(expectedIdx);
+  const sectionLoopRef = useRef(sectionLoop);
   /* eslint-disable react-hooks/immutability */
   useEffect(() => { songRef.current = song; }, [song]);
   useEffect(() => { expectedIdxRef.current = expectedIdx; }, [expectedIdx]);
+  useEffect(() => { sectionLoopRef.current = sectionLoop; }, [sectionLoop]);
   /* eslint-enable react-hooks/immutability */
 
   const tryAdvanceCursor = useCallback((prev: number | null, next: number | null) => {
@@ -367,7 +402,7 @@ export default function AirSynthStage() {
     if (!s) return;
     if (next === null || next === prev) return;
     if (next !== expectedIdxRef.current) return;
-    setSongCursor((c) => nextCursor(s, c));
+    setSongCursor((c) => nextCursorLooped(s, c, sectionLoopRef.current));
   }, []);
 
   // Pull lyrics from LRClib when a song is loaded. Result is cached in
@@ -403,6 +438,8 @@ export default function AirSynthStage() {
 
   useEffect(() => {
     if (!trackingStarted) return;
+    const SUSTAIN_FRAMES = 6; // ~200ms at 30fps
+    const COOLDOWN_MS = 1000;
     const onFrame = (e: Event) => {
       const frame = (e as CustomEvent<GestureFrame>).detail;
 
@@ -419,6 +456,56 @@ export default function AirSynthStage() {
         return angleToSector(Math.atan2(dy, dx), slices);
       };
 
+      // ── Two-hand command detection ─────────────────────────────────────
+      // When both hands hold the same shape for SUSTAIN_FRAMES, fire a
+      // section / pause action. Only fist / thumb / index participate so
+      // common single-hand pattern gestures (open / peace / three / rock /
+      // hangloose) stay free for pattern selection. When a two-hand combo
+      // is being held, single-hand pattern selection is suppressed so the
+      // user doesn't get a stray pattern change as a side effect.
+      let combo: string | null = null;
+      if (frame.left.present && frame.right.present) {
+        const lg = frame.left.gesture;
+        const rg = frame.right.gesture;
+        if (lg && lg === rg) {
+          if (lg === "fist") combo = "both-fist";
+          else if (lg === "thumb") combo = "both-thumb";
+          else if (lg === "index") combo = "both-index";
+        }
+      }
+
+      const state = twoHandRef.current;
+      const now = performance.now();
+      if (combo == null) {
+        if (state.combo != null) {
+          state.combo = null;
+          state.frames = 0;
+          setTwoHandHint(null);
+        }
+      } else if (combo !== state.combo) {
+        state.combo = combo;
+        state.frames = 1;
+        setTwoHandHint({ combo, progress: 1 / SUSTAIN_FRAMES });
+      } else {
+        state.frames++;
+        if (state.frames === SUSTAIN_FRAMES && now > state.cooldownUntil) {
+          if (combo === "both-fist") {
+            setPaused((p) => !p);
+          } else if (combo === "both-thumb") {
+            const s = songRef.current;
+            if (s) setSongCursor((c) => nextSectionCursor(s, c));
+          } else if (combo === "both-index") {
+            const s = songRef.current;
+            if (s) setSongCursor((c) => previousSectionCursor(s, c));
+          }
+          state.cooldownUntil = now + COOLDOWN_MS;
+          setTwoHandHint({ combo, progress: 1 });
+        } else if (state.frames < SUSTAIN_FRAMES) {
+          setTwoHandHint({ combo, progress: state.frames / SUSTAIN_FRAMES });
+        }
+      }
+      const suppressPattern = combo != null;
+
       // Left hand → pattern selection by hand-shape gesture. Position is
       // ignored; only the gesture matters. Sticky if no specific gesture is
       // recognized (hand is in transition / ambiguous shape).
@@ -426,7 +513,7 @@ export default function AirSynthStage() {
         setLeftPresent(true);
         setLeftCursor({ x: frame.left.x, y: frame.left.y });
         setLeftGesture(frame.left.gesture);
-        if (frame.left.gesture) {
+        if (frame.left.gesture && !suppressPattern) {
           const next = patternsRef.current.findIndex((p) => p.gesture === frame.left.gesture);
           if (next >= 0 && next !== patternIndexRef.current) {
             patternIndexRef.current = next;
@@ -772,6 +859,64 @@ export default function AirSynthStage() {
               {Math.round(reverbAmount * 100)}
             </span>
           </label>
+          <label
+            className="flex items-center gap-1.5 select-none"
+            title={`Tempo ${Math.round(tempoScale * 100)}% · ${Math.round((song?.bpm ?? 110) * tempoScale)} BPM`}
+          >
+            <span className="opacity-70">Tempo</span>
+            <input
+              type="range"
+              min={50}
+              max={150}
+              step={5}
+              value={Math.round(tempoScale * 100)}
+              onChange={(e) => setTempoScale(parseInt(e.target.value, 10) / 100)}
+              className="w-16 accent-cyan-400 cursor-pointer"
+            />
+            <span className="text-[9px] text-white/45 font-mono tabular-nums w-9 text-right">
+              {Math.round(tempoScale * 100)}%
+            </span>
+          </label>
+          <label
+            className="flex items-center gap-2 cursor-pointer select-none"
+            title="Loop the current section instead of advancing — practice a chorus until it sticks"
+          >
+            <span className={song ? "opacity-70" : "opacity-30"}>Loop</span>
+            <button
+              role="switch"
+              aria-checked={sectionLoop}
+              onClick={() => setSectionLoop((v) => !v)}
+              disabled={!song}
+              className={`w-9 h-5 rounded-full relative transition-colors ${
+                sectionLoop ? "bg-cyan-500" : "bg-white/20"
+              } ${song ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
+            >
+              <span
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  sectionLoop ? "translate-x-4" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </label>
+          {song?.backingTrack && (
+            <label
+              className="flex items-center gap-1.5 select-none"
+              title={`Backing track ${Math.round(backingVolume * 100)}%`}
+            >
+              <span className="opacity-70">Band</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(backingVolume * 100)}
+                onChange={(e) => setBackingVolume(parseInt(e.target.value, 10) / 100)}
+                className="w-16 accent-amber-400 cursor-pointer"
+              />
+              <span className="text-[9px] text-white/45 font-mono tabular-nums w-7 text-right">
+                {Math.round(backingVolume * 100)}
+              </span>
+            </label>
+          )}
           <label className="flex items-center gap-2 cursor-pointer select-none" title="Auto walk-up + grace-note fills between chord changes (song mode only)">
             <span className={song ? "opacity-70" : "opacity-30"}>Fills</span>
             <button
@@ -1069,6 +1214,11 @@ export default function AirSynthStage() {
             <span className="opacity-70">.</span>
           </p>
         )}
+        {trackingStarted && audioReady && song && (
+          <p className="mt-1 text-[10px] text-cyan-200/55">
+            Both ✊ = pause · 👍👍 = next section · ☝️☝️ = previous · hold ~200ms
+          </p>
+        )}
       </div>
 
       {paused && (
@@ -1076,6 +1226,24 @@ export default function AirSynthStage() {
           <div className="px-6 py-3 rounded-2xl backdrop-blur-md bg-black/60 border border-white/15 text-center">
             <div className="text-3xl font-light tracking-[0.4em] text-white/85">PAUSED</div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-white/50 mt-1">press space to resume</div>
+          </div>
+        </div>
+      )}
+
+      {twoHandHint && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div className="px-4 py-2 rounded-2xl backdrop-blur-md bg-black/55 border border-white/15 text-center min-w-[180px]">
+            <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200/85">
+              {twoHandHint.combo === "both-fist" && "✊ ✊  pause"}
+              {twoHandHint.combo === "both-thumb" && "👍 👍  next section"}
+              {twoHandHint.combo === "both-index" && "☝️ ☝️  previous section"}
+            </div>
+            <div className="mt-1 h-1 w-full bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan-400 transition-[width] duration-75"
+                style={{ width: `${Math.round(twoHandHint.progress * 100)}%` }}
+              />
+            </div>
           </div>
         </div>
       )}

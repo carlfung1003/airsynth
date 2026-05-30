@@ -4,6 +4,17 @@ Gesture-driven piano & guitar for singing along. Right hand points at a chord on
 
 Live: [airsynth.carlfung.dev](https://airsynth.carlfung.dev)
 
+## Practice mode & two-hand commands
+
+- **Tempo slider** (50%–150%) scales the song's authored BPM and any loaded backing track in lock-step — slow Marry You to 70% to learn the changes, then ramp back up
+- **Section loop** keeps the cursor inside the current section instead of advancing to the next — run a chorus until the chord shapes are automatic
+- **Two-hand commands** (hold ~200ms with both hands in the same shape):
+  - ✊ ✊ both fists → toggle pause
+  - 👍 👍 both thumbs → jump to next section
+  - ☝️ ☝️ both index fingers → jump to previous section
+  - A bottom-center progress bar fills while the gesture is held; single-hand pattern selection is suppressed during the hold so a stray pattern doesn't switch
+- **Backing track** — drop a drums+bass+pad stem at `/public/backing-tracks/<song-id>.mp3` and set `backingTrack: { url, sourceBpm }` on the `Song` entry. The engine stretches the buffer with `playbackRate` so it stays glued to the live chord loop even when you change tempo. A "Band" volume slider appears in the header whenever the active song has one.
+
 ## What's new in this version
 
 ### Song mode

@@ -660,6 +660,31 @@ export function nextCursor(song: Song, cursor: SongCursor): SongCursor {
   return { structureIdx: nextStruct, chordIdx: 0 };
 }
 
+// Same as nextCursor but, when sectionLoop is on, wraps back to chordIdx=0 of
+// the current section instead of advancing to the next section. Practice
+// mode: loop a chorus until you've got it.
+export function nextCursorLooped(song: Song, cursor: SongCursor, sectionLoop: boolean): SongCursor {
+  if (!sectionLoop) return nextCursor(song, cursor);
+  const section = song.sections.find((s) => s.id === song.structure[cursor.structureIdx]);
+  const sectionLen = section ? sectionChordSymbols(section).length : 0;
+  if (cursor.chordIdx + 1 < sectionLen) {
+    return { ...cursor, chordIdx: cursor.chordIdx + 1 };
+  }
+  return { ...cursor, chordIdx: 0 };
+}
+
+// Jump to the start of the next section in the structure (wraps around).
+export function nextSectionCursor(song: Song, cursor: SongCursor): SongCursor {
+  const next = (cursor.structureIdx + 1) % song.structure.length;
+  return { structureIdx: next, chordIdx: 0 };
+}
+
+// Jump to the start of the previous section in the structure (wraps around).
+export function previousSectionCursor(song: Song, cursor: SongCursor): SongCursor {
+  const prev = (cursor.structureIdx - 1 + song.structure.length) % song.structure.length;
+  return { structureIdx: prev, chordIdx: 0 };
+}
+
 export function sectionAt(song: Song, cursor: SongCursor): SongSection | null {
   const id = song.structure[cursor.structureIdx];
   return song.sections.find((s) => s.id === id) ?? null;

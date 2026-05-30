@@ -86,6 +86,7 @@ class AudioEngine {
   private backingSource: AudioBufferSourceNode | null = null;
   private backingGain: GainNode | null = null;
   private backingPlaybackRate = 1;
+  private backingSourceBpm = 0;
   private backingStartedAt = 0;
   private backingPausedAt = 0;
   private backingPlaying = false;
@@ -288,6 +289,15 @@ class AudioEngine {
 
   setBpm(bpm: number): void {
     Tone.Transport.bpm.value = bpm;
+    // Keep the backing track stretched to the new tempo. Adjusting an
+    // already-playing AudioBufferSourceNode's playbackRate is allowed and
+    // takes effect immediately.
+    if (this.backingSourceBpm > 0) {
+      this.backingPlaybackRate = bpm / this.backingSourceBpm;
+      if (this.backingSource) {
+        this.backingSource.playbackRate.value = this.backingPlaybackRate;
+      }
+    }
   }
 
   setInstrument(inst: Instrument): void {
@@ -609,11 +619,12 @@ class AudioEngine {
       if (!res.ok) return false;
       const arr = await res.arrayBuffer();
       this.backingBuffer = await ctx.decodeAudioData(arr);
-      const songBpm = Tone.Transport.bpm.value;
-      this.backingPlaybackRate = songBpm / sourceBpm;
+      this.backingSourceBpm = sourceBpm;
+      this.backingPlaybackRate = Tone.Transport.bpm.value / sourceBpm;
       return true;
     } catch {
       this.backingBuffer = null;
+      this.backingSourceBpm = 0;
       return false;
     }
   }
@@ -657,6 +668,7 @@ class AudioEngine {
     this.pauseBackingTrack();
     this.backingPausedAt = 0;
     this.backingBuffer = null;
+    this.backingSourceBpm = 0;
   }
 
   setBackingVolume(gain: number): void {
