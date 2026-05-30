@@ -7,6 +7,8 @@ Live: [airsynth.carlfung.dev](https://airsynth.carlfung.dev)
 ## Practice mode & two-hand commands
 
 - **Tempo slider** (50%–150%) scales the song's authored BPM and any loaded backing track in lock-step — slow Marry You to 70% to learn the changes, then ramp back up
+- **Transpose** (±6 semitones) shifts the active song's chord palette + engine root live so singers can drop a song into their vocal range without rewriting source data. The header readout shows the original key, the effective key, and the offset. Resets to 0 on song change.
+- **Chord diagrams** — a mini piano-key strip floats below the chord ribbon showing every pitch class in the currently-held chord, with the root highlighted amber. Works for diatonic chords, 7ths, slash chords, and extended chords (♭9, ♯11, etc.) since it's derived directly from the resolved voicing.
 - **Section loop** keeps the cursor inside the current section instead of advancing to the next — run a chorus until the chord shapes are automatic
 - **Two-hand commands** (hold ~200ms with both hands in the same shape):
   - ✊ ✊ both fists → toggle pause

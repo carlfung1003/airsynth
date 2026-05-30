@@ -1,3 +1,4 @@
+import { Note } from "tonal";
 import type { ChordStyle, Instrument, ScaleType } from "./theory";
 
 // A phrase = one LRC lyric line. Either a flat array of chord symbols
@@ -696,4 +697,53 @@ export function expectedChordSymbol(song: Song, cursor: SongCursor): string | nu
   const section = sectionAt(song, cursor);
   if (!section) return null;
   return sectionChordSymbols(section)[cursor.chordIdx] ?? null;
+}
+
+// Shift a bare pitch class ("C", "F#", "Bb") by N semitones. Falls back to
+// sharps; downstream Tonal calls (Chord.get) accept both. Used by transpose.
+export function transposePitchClass(pc: string, semitones: number): string {
+  if (semitones === 0) return pc;
+  const midi = Note.midi(`${pc}4`);
+  if (midi == null) return pc;
+  const transposed = Note.fromMidi(midi + semitones);
+  return transposed.replace(/\d+$/, "");
+}
+
+// Shift a chord symbol ("A/G#", "F#m7b5", "C6/9", "E9") by N semitones.
+// Handles slash chords by detecting whether the part after `/` is a valid
+// pitch class — "/9" / "/11" are extensions, "/G#" is a bass note.
+export function transposeChordSymbol(symbol: string, semitones: number): string {
+  if (semitones === 0) return symbol;
+  let main = symbol;
+  let bassTail = "";
+  const slashIdx = symbol.lastIndexOf("/");
+  if (slashIdx > 0) {
+    const after = symbol.slice(slashIdx + 1);
+    if (/^[A-G][#b]?$/.test(after)) {
+      main = symbol.slice(0, slashIdx);
+      bassTail = "/" + transposePitchClass(after, semitones);
+    }
+  }
+  const m = main.match(/^([A-G][#b]?)(.*)$/);
+  if (!m) return symbol;
+  return `${transposePitchClass(m[1], semitones)}${m[2]}${bassTail}`;
+}
+
+// Return a transposed copy of the song — rootKey + every chord symbol shifted
+// by `semitones`. Lyrics, BPM, structure, backing track URL all unchanged.
+// Used as a runtime "lens" so the user can shift the active song into their
+// vocal range without rewriting the source data.
+export function transposeSong(song: Song, semitones: number): Song {
+  if (semitones === 0) return song;
+  return {
+    ...song,
+    rootKey: transposePitchClass(song.rootKey, semitones),
+    sections: song.sections.map((sec) => ({
+      ...sec,
+      phrases: sec.phrases.map((p) => {
+        if (Array.isArray(p)) return p.map((c) => transposeChordSymbol(c, semitones));
+        return { ...p, chords: p.chords.map((c) => transposeChordSymbol(c, semitones)) };
+      }),
+    })),
+  };
 }

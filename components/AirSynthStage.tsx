@@ -4,6 +4,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { motion, AnimatePresence } from "framer-motion";
 import HandTracker from "./HandTracker";
 import Visualizer from "./Visualizer";
+import ChordDiagram from "./ChordDiagram";
 import { getAudioEngine } from "@/lib/audio";
 import {
   GESTURE_FRAME_EVENT,
@@ -39,6 +40,7 @@ import {
   previousSectionCursor,
   sectionAt,
   sectionChordSymbols,
+  transposeSong,
 } from "@/lib/songs";
 import {
   MappedLyric,
@@ -109,13 +111,24 @@ export default function AirSynthStage() {
   // the current section so you can loop a chorus until you've got it.
   const [tempoScale, setTempoScale] = useState(1.0);
   const [sectionLoop, setSectionLoop] = useState(false);
+  // Transpose the active song by N semitones — lets singers shift Marry You
+  // (D) down to Bb or up to F# without the source data changing. Lyrics +
+  // BPM are unaffected; only chord symbols + the engine's scale-walking
+  // root shift. Resets to 0 on song change.
+  const [transposeSemis, setTransposeSemis] = useState(0);
   // Backing track volume — only meaningful when the active song has one.
   const [backingVolume, setBackingVolume] = useState(0.55);
   // Visual indicator for an in-progress two-hand command (clap = pause,
   // both-thumb = next section, both-index = previous section).
   const [twoHandHint, setTwoHandHint] = useState<{ combo: string; progress: number } | null>(null);
 
-  const song = useMemo(() => getSongById(songId), [songId]);
+  // baseSong = unmodified source. song = transposed lens used everywhere
+  // downstream (chord palette, voicing, scale, reel labels, etc).
+  const baseSong = useMemo(() => getSongById(songId), [songId]);
+  const song = useMemo(
+    () => (baseSong ? transposeSong(baseSong, transposeSemis) : null),
+    [baseSong, transposeSemis],
+  );
   const currentSection = useMemo(() => (song ? sectionAt(song, songCursor) : null), [song, songCursor]);
   const palette = useMemo(() => (song ? getSongPalette(song) : []), [song]);
   const expectedSymbol = useMemo(
@@ -219,6 +232,12 @@ export default function AirSynthStage() {
     cooldownUntil: 0,
   });
 
+  // In song mode the engine's scale / drone / header readout follow the
+  // transposed song's key. In free-play they follow the explicit rootKey
+  // state set by presets / custom-key picker.
+  const effectiveRootKey = song?.rootKey ?? rootKey;
+  const effectiveScaleType = song?.scaleType ?? scaleType;
+
   const diatonicChords = useMemo(
     () => getChordSlots(rootKey, scaleType, chordStyle),
     [rootKey, scaleType, chordStyle],
@@ -266,11 +285,11 @@ export default function AirSynthStage() {
   // Push the current scale to the engine so scale-aware patterns (2↑, 4, 6,
   // etc.) resolve correctly. Without this they'd fall back to chord-tone
   // semantics and the Wave / Arpeggio patterns wouldn't play scale passing
-  // tones.
+  // tones. effectiveRootKey follows the transposed song in song mode.
   useEffect(() => {
     if (!audioReady) return;
-    getAudioEngine().setScale(getScaleNotes(rootKey, scaleType));
-  }, [audioReady, rootKey, scaleType]);
+    getAudioEngine().setScale(getScaleNotes(effectiveRootKey, effectiveScaleType));
+  }, [audioReady, effectiveRootKey, effectiveScaleType]);
 
   useEffect(() => {
     if (!audioReady) return;
@@ -405,12 +424,13 @@ export default function AirSynthStage() {
     setSongCursor((c) => nextCursorLooped(s, c, sectionLoopRef.current));
   }, []);
 
-  // Pull lyrics from LRClib when a song is loaded. Result is cached in
-  // localStorage by fetchLyrics so the second visit is free. Cancellation
-  // token guards against the user picking a different song mid-fetch.
+  // Pull lyrics from LRClib when a song is loaded. Keyed on baseSong (not the
+  // transposed lens) so changing the transpose doesn't re-fetch lyrics. The
+  // chord-position mapping doesn't care about pitch — only structure — so it
+  // can be built from baseSong too.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!song) {
+    if (!baseSong) {
       setLyrics(null);
       setLyricsStatus("idle");
       return;
@@ -419,21 +439,21 @@ export default function AirSynthStage() {
     setLyricsStatus("loading");
     setLyrics(null);
     void (async () => {
-      const lines = await fetchLyrics(song.id, song.artist, song.title).catch(() => null);
+      const lines = await fetchLyrics(baseSong.id, baseSong.artist, baseSong.title).catch(() => null);
       if (cancelled) return;
       if (!lines || lines.length === 0) {
         setLyrics(null);
         setLyricsStatus("missing");
         return;
       }
-      const mapped = mapLinesToChordPositions(lines, song);
+      const mapped = mapLinesToChordPositions(lines, baseSong);
       setLyrics(mapped);
       setLyricsStatus("ready");
     })();
     return () => {
       cancelled = true;
     };
-  }, [song]);
+  }, [baseSong]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -567,21 +587,21 @@ export default function AirSynthStage() {
     const noHands = !leftPresent && !rightPresent;
     const shouldDrone = droneEnabled && noHands && trackingStarted;
     if (shouldDrone && !droneActiveRef.current) {
-      engine.startDrone(`${rootKey}3`);
+      engine.startDrone(`${effectiveRootKey}3`);
       droneActiveRef.current = true;
     } else if (!shouldDrone && droneActiveRef.current) {
       engine.stopDrone();
       droneActiveRef.current = false;
     }
-  }, [audioReady, leftPresent, rightPresent, droneEnabled, rootKey, trackingStarted]);
+  }, [audioReady, leftPresent, rightPresent, droneEnabled, effectiveRootKey, trackingStarted]);
 
   useEffect(() => {
     if (droneActiveRef.current && audioReady) {
       const engine = getAudioEngine();
       engine.stopDrone();
-      engine.startDrone(`${rootKey}3`);
+      engine.startDrone(`${effectiveRootKey}3`);
     }
-  }, [rootKey, scaleType, audioReady]);
+  }, [effectiveRootKey, effectiveScaleType, audioReady]);
 
   const ensureAudio = useCallback(async () => {
     if (audioReady || audioLoading) return;
@@ -712,6 +732,7 @@ export default function AirSynthStage() {
     if (!s) return;
     setSongId(id);
     setSongCursor({ structureIdx: 0, chordIdx: 0 });
+    setTransposeSemis(0);
     setRootKey(s.rootKey);
     setScaleType(s.scaleType);
     setChordStyle(s.chordStyle ?? "triad");
@@ -731,6 +752,7 @@ export default function AirSynthStage() {
   const handleSongClear = useCallback(() => {
     setSongId(null);
     setSongCursor({ structureIdx: 0, chordIdx: 0 });
+    setTransposeSemis(0);
   }, []);
 
   const handlePresetClick = (presetId: string) => {
@@ -805,9 +827,14 @@ export default function AirSynthStage() {
         </div>
 
         <div className="ml-auto flex items-center gap-3 text-[11px] text-white/70">
-          <span className="font-mono text-white/90">
-            {rootKey} {scaleType}
+          <span className="font-mono text-white/90" title={song && transposeSemis !== 0 ? `Original: ${baseSong?.rootKey} · transposed ${transposeSemis > 0 ? "+" : ""}${transposeSemis}` : undefined}>
+            {effectiveRootKey} {effectiveScaleType}
             {chordStyle === "seventh" && <span className="text-yellow-200/90"> · 7ths</span>}
+            {song && transposeSemis !== 0 && (
+              <span className="text-cyan-300/80 ml-1 text-[9px]">
+                ({transposeSemis > 0 ? "+" : ""}{transposeSemis})
+              </span>
+            )}
           </span>
           <div className="flex items-center gap-1 rounded-full bg-white/5 border border-white/10 p-0.5">
             <button
@@ -898,6 +925,53 @@ export default function AirSynthStage() {
               />
             </button>
           </label>
+          {song && (
+            <div
+              className="flex items-center gap-1 rounded-full bg-white/5 border border-white/10 p-0.5"
+              title={`Transpose · original ${baseSong?.rootKey} · effective ${effectiveRootKey}`}
+            >
+              <span className="opacity-70 px-1.5 text-[10px]">Key</span>
+              <button
+                onClick={() => setTransposeSemis((s) => Math.max(-6, s - 1))}
+                disabled={transposeSemis <= -6}
+                className={`w-6 h-5 rounded-full text-[12px] leading-none transition-colors ${
+                  transposeSemis <= -6
+                    ? "text-white/20 cursor-not-allowed"
+                    : "text-white/85 hover:bg-white/10 cursor-pointer"
+                }`}
+                aria-label="Transpose down a semitone"
+              >
+                −
+              </button>
+              <span className="font-mono text-[10px] tabular-nums w-12 text-center text-white/85">
+                {effectiveRootKey}
+                {transposeSemis !== 0 && (
+                  <span className="text-cyan-300/80 ml-0.5">{transposeSemis > 0 ? `+${transposeSemis}` : transposeSemis}</span>
+                )}
+              </span>
+              <button
+                onClick={() => setTransposeSemis((s) => Math.min(6, s + 1))}
+                disabled={transposeSemis >= 6}
+                className={`w-6 h-5 rounded-full text-[12px] leading-none transition-colors ${
+                  transposeSemis >= 6
+                    ? "text-white/20 cursor-not-allowed"
+                    : "text-white/85 hover:bg-white/10 cursor-pointer"
+                }`}
+                aria-label="Transpose up a semitone"
+              >
+                +
+              </button>
+              {transposeSemis !== 0 && (
+                <button
+                  onClick={() => setTransposeSemis(0)}
+                  className="text-[9px] text-white/45 hover:text-white/85 px-1.5 cursor-pointer"
+                  title="Reset transpose"
+                >
+                  ↺
+                </button>
+              )}
+            </div>
+          )}
           {song?.backingTrack && (
             <label
               className="flex items-center gap-1.5 select-none"
@@ -1226,6 +1300,17 @@ export default function AirSynthStage() {
           <div className="px-6 py-3 rounded-2xl backdrop-blur-md bg-black/60 border border-white/15 text-center">
             <div className="text-3xl font-light tracking-[0.4em] text-white/85">PAUSED</div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-white/50 mt-1">press space to resume</div>
+          </div>
+        </div>
+      )}
+
+      {audioReady && chordIndex !== null && chords[chordIndex] && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <div className="px-3 py-2 rounded-xl backdrop-blur-md bg-black/55 border border-white/10 text-center">
+            <div className="text-[9px] uppercase tracking-[0.3em] text-amber-200/85 mb-1 font-mono">
+              {prettyChordSymbol(chords[chordIndex].symbol)}
+            </div>
+            <ChordDiagram slot={chords[chordIndex]} />
           </div>
         </div>
       )}
