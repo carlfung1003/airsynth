@@ -99,23 +99,52 @@ class AudioEngine {
   private ready = false;
   private loadingPromise: Promise<void> | null = null;
 
+  // Native-clock time of the last off-grid chord attack (see attackChordNow).
+  // The loop uses it to skip a grid chord hit that would land right on top of
+  // it and flam.
+  private lastImmediateAttack = -1;
+
   async init(): Promise<void> {
     if (this.ready) return;
     if (this.loadingPromise) return this.loadingPromise;
 
     this.loadingPromise = (async () => {
-      // smplr's AudioWorkletNode rejects standardized-audio-context wrappers
-      // and Tone's wrapper trips that check. So we run Tone on its own
-      // context and give smplr a separate native AudioContext. Both write
-      // to the speakers — the OS mixes them. We lose cross-routing (Tone
-      // can't feed smplr's reverb) but the audio works.
-      await Tone.start();
-      Tone.Transport.bpm.value = 110;
-
+      // ONE clock for Tone and smplr.
+      //
+      // smplr's AudioWorkletNode rejects standardized-audio-context wrappers,
+      // so we can't hand it Tone's own context — we have to own a native
+      // AudioContext. But smplr's `start({ time })` is an ABSOLUTE time in
+      // *its* context's clock, and Tone.Loop hands us a time in *Tone's*
+      // clock. Those two clocks only agree if they're the same context:
+      // importing `tone` spins up an AudioContext at page load, while ours is
+      // created on the first user gesture, so Tone's currentTime runs ahead by
+      // however long the page sat idle. Feeding that number to smplr
+      // scheduled every note that many seconds into the future — a 90s+ delay
+      // if the user read the UI before playing.
+      //
+      // Fix: create the native context first and give it to Tone. Both then
+      // read the same currentTime. Note that the `Tone.Transport` export is
+      // bound at import time to the context Tone made for itself, so every
+      // reference below has to go through Tone.getTransport() to reach the
+      // transport that actually belongs to this context.
       const ctx: AudioContext = new (window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)({
+        latencyHint: "interactive",
+      });
       if (ctx.state === "suspended") await ctx.resume();
       this.nativeCtx = ctx;
+
+      const importTimeContext = Tone.getContext();
+      Tone.setContext(ctx);
+      // Free the AudioContext Tone opened at import — browsers cap how many
+      // can be live at once. Deferred and caught so a failed close can't
+      // reject into the init chain.
+      void Promise.resolve()
+        .then(() => importTimeContext.dispose())
+        .catch(() => {});
+
+      await Tone.start();
+      Tone.getTransport().bpm.value = 110;
 
       this.analyser = new Tone.Analyser("fft", 64);
 
@@ -287,8 +316,20 @@ class AudioEngine {
     return this.ready;
   }
 
+  // Tone.Loop hands out times on Tone's clock; smplr schedules on ours. Since
+  // init() points Tone at the same AudioContext these are identical, and this
+  // returns `toneTime` untouched. It exists so that if the two ever end up on
+  // separate contexts again the notes stay on time instead of silently
+  // scheduling seconds into the future.
+  private toNativeTime(toneTime: number): number {
+    const ctx = this.nativeCtx;
+    if (!ctx) return toneTime;
+    const skew = Tone.getContext().currentTime - ctx.currentTime;
+    return Math.abs(skew) < 0.005 ? toneTime : toneTime - skew;
+  }
+
   setBpm(bpm: number): void {
-    Tone.Transport.bpm.value = bpm;
+    Tone.getTransport().bpm.value = bpm;
     // Keep the backing track stretched to the new tempo. Adjusting an
     // already-playing AudioBufferSourceNode's playbackRate is allowed and
     // takes effect immediately.
@@ -324,8 +365,43 @@ class AudioEngine {
         // before we press it again.
         setTimeout(() => this.piano?.setCC?.(64, 127), 30);
       }
+      this.attackChordNow(notes);
     }
     if (wasEmpty && notes.length > 0) this.stepCounter = 0;
+  }
+
+  // Sound a new chord immediately instead of waiting for the pattern's next
+  // chord step. Patterns only strike the full chord on the steps that carry a
+  // chord token — "Hold" has exactly one (step 0), "Block" and "Pop" two —
+  // so on the grid alone a chord change can sit silent for most of a bar
+  // (~2s at 100bpm) while the previous chord has already been released. That
+  // gap reads as lag, not as musical timing. The grid keeps running
+  // underneath; this just gives the gesture an instant response.
+  private attackChordNow(notes: string[]): void {
+    const ctx = this.nativeCtx;
+    if (!this.ready || !ctx || this.paused || notes.length === 0) return;
+
+    const time = ctx.currentTime;
+    this.lastImmediateAttack = time;
+
+    if (this.instrument === "guitar") {
+      // Light strum rather than a block hit — a guitarist can't sound six
+      // strings simultaneously and the spread keeps fast chord sweeps legible.
+      notes.forEach((note, i) => {
+        const stop = this.guitar?.start({
+          note,
+          time: time + i * 0.012,
+          velocity: 70,
+          duration: 3.2,
+        });
+        if (stop) this.activeGuitarStops.push(stop as () => void);
+      });
+    } else {
+      for (const note of notes) {
+        const stop = this.piano?.start({ note, time, velocity: 64, duration: 6.0 });
+        if (stop) this.activePianoStops.push(stop as () => void);
+      }
+    }
   }
 
   setPattern(pattern: Pattern | null): void {
@@ -352,7 +428,7 @@ class AudioEngine {
     if (!this.ready || this.loopRunning) return;
     this.stepCounter = 0;
     this.chordChangedAt = 0;
-    this.loop = new Tone.Loop((time) => {
+    this.loop = new Tone.Loop((toneTime) => {
       if (this.paused) return;
       const chord = this.currentChord;
       const pattern = this.currentPattern;
@@ -360,9 +436,12 @@ class AudioEngine {
         this.stepCounter++;
         return;
       }
+      // Every `start({ time })` below is an absolute time on the smplr
+      // context's clock, so translate out of Tone's before scheduling.
+      const time = this.toNativeTime(toneTime);
       const idx = this.stepCounter % pattern.steps.length;
       const step = pattern.steps[idx];
-      const barSec8th = 60 / Tone.Transport.bpm.value / 2;
+      const barSec8th = 60 / Tone.getTransport().bpm.value / 2;
 
       // FILLS — 4-note filler on the last half-bar leading into the next
       // chord, plus a grace-note octave-up root on the first beat of the
@@ -388,7 +467,7 @@ class AudioEngine {
       // cycle. The octave doubling matches the typical pop/rock piano
       // score's two-stacked-whole-notes bass and gives a dramatic anchor.
       if (idx === 0 && pattern.bassDrone && chord.length > 0) {
-        const barSec = 60 / Tone.Transport.bpm.value / 2;
+        const barSec = 60 / Tone.getTransport().bpm.value / 2;
         const cycleSec = pattern.steps.length * barSec;
         const bass1 = notesForStep(chord, [-1], this.currentScale)[0];
         const bass2 = bass1 ? this.dropOctave(bass1) : null;
@@ -409,6 +488,14 @@ class AudioEngine {
       if (step.length) {
         const notes = notesForStep(chord, step, this.currentScale);
         const isFullChord = step.length > 1 || step[0] === 0;
+
+        // attackChordNow() just sounded this chord off-grid. If the grid's own
+        // chord hit lands within a flam's distance of it, drop the grid hit —
+        // otherwise a chord change a hair before the beat double-strikes.
+        if (isFullChord && time - this.lastImmediateAttack < 0.09) {
+          this.stepCounter++;
+          return;
+        }
 
         // Velocity dynamics — downbeats louder, off-beats softer, with a
         // little randomization so it feels human rather than sequenced.
@@ -456,7 +543,7 @@ class AudioEngine {
       this.stepCounter++;
     }, "8n");
     this.loop.start(0);
-    if (Tone.Transport.state !== "started") Tone.Transport.start();
+    if (Tone.getTransport().state !== "started") Tone.getTransport().start();
     this.loopRunning = true;
   }
 
@@ -572,7 +659,7 @@ class AudioEngine {
       this.loop.dispose();
       this.loop = null;
     }
-    if (Tone.Transport.state === "started") Tone.Transport.stop();
+    if (Tone.getTransport().state === "started") Tone.getTransport().stop();
     this.loopRunning = false;
     this.stepCounter = 0;
     this.releasePianoVoices();
@@ -620,7 +707,7 @@ class AudioEngine {
       const arr = await res.arrayBuffer();
       this.backingBuffer = await ctx.decodeAudioData(arr);
       this.backingSourceBpm = sourceBpm;
-      this.backingPlaybackRate = Tone.Transport.bpm.value / sourceBpm;
+      this.backingPlaybackRate = Tone.getTransport().bpm.value / sourceBpm;
       return true;
     } catch {
       this.backingBuffer = null;
