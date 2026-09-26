@@ -261,31 +261,34 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 select-none"
+      className="as-tracker fixed bottom-4 right-4 z-50 select-none"
+      data-status={status}
       style={{ fontFamily: "var(--font-inter), sans-serif" }}
     >
       {status === "idle" && (
         <button
           onClick={start}
-          className="px-4 py-2 rounded-full bg-purple-600/90 hover:bg-purple-500 text-white text-xs backdrop-blur shadow-lg shadow-purple-900/40 border border-white/10 cursor-pointer"
+          className="as-tracker-start px-4 py-2 rounded-full bg-purple-600/90 hover:bg-purple-500 text-white text-xs backdrop-blur shadow-lg shadow-purple-900/40 border border-white/10 cursor-pointer"
         >
-          ✋ Enable hand tracking
+          <span className="as-desktop-only">✋ Enable hand tracking</span>
+          {/* Phone: the button shares a row with the hint text. */}
+          <span className="as-phone-only">✋ Use camera</span>
         </button>
       )}
 
       {status === "loading" && (
-        <div className="px-4 py-2 rounded-full bg-black/60 text-white text-xs backdrop-blur border border-white/10">
+        <div className="as-tracker-loading px-4 py-2 rounded-full bg-black/60 text-white text-xs backdrop-blur border border-white/10">
           Loading…
         </div>
       )}
 
       {status === "error" && (
-        <div className="max-w-xs p-3 rounded-lg bg-red-900/80 text-white text-xs border border-red-700">
-          <div className="mb-1 font-semibold">Hand tracking failed</div>
-          <div className="opacity-80">{error}</div>
+        <div className="as-tracker-error max-w-xs p-3 rounded-lg bg-red-900/80 text-white text-xs border border-red-700">
+          <div className="as-tracker-error-title mb-1 font-semibold">Hand tracking failed</div>
+          <div className="as-tracker-error-msg opacity-80">{error}</div>
           <button
             onClick={start}
-            className="mt-2 px-2 py-1 rounded bg-white/20 hover:bg-white/30 cursor-pointer"
+            className="as-tracker-retry mt-2 px-2 py-1 rounded bg-white/20 hover:bg-white/30 cursor-pointer"
           >
             Retry
           </button>
@@ -293,12 +296,12 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
       )}
 
       <div
-        className={`bg-black/60 backdrop-blur rounded-2xl border border-white/10 shadow-2xl overflow-hidden transition-all ${
+        className={`as-tracker-cam bg-black/60 backdrop-blur rounded-2xl border border-white/10 shadow-2xl overflow-hidden transition-all ${
           status === "running" ? "block" : "hidden"
         } ${collapsed ? "w-14" : "w-44"}`}
       >
         <div
-          className={`relative aspect-[4/3] bg-black ${collapsed ? "hidden" : "block"}`}
+          className={`as-tracker-video relative aspect-[4/3] bg-black ${collapsed ? "hidden" : "block"}`}
         >
           <video
             ref={videoRef}
@@ -312,7 +315,7 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
             className="absolute inset-0 w-full h-full scale-x-[-1] pointer-events-none"
           />
         </div>
-        <div className="flex justify-between items-center px-2 py-1 text-[10px] text-white/70">
+        <div className="as-tracker-bar flex justify-between items-center px-2 py-1 text-[10px] text-white/70">
           <button
             onClick={() => setCollapsed((c) => !c)}
             className="hover:text-white cursor-pointer"
@@ -320,7 +323,7 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
           >
             {collapsed ? "✋" : "—"}
           </button>
-          {!collapsed && <span className="opacity-60">two-hand mode</span>}
+          {!collapsed && <span className="as-tracker-caption opacity-60">two-hand mode</span>}
           <button
             onClick={stop}
             className="hover:text-red-300 cursor-pointer"

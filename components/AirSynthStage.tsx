@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import HandTracker from "./HandTracker";
 import Visualizer from "./Visualizer";
@@ -65,6 +65,14 @@ type ReelGeometry = {
   cy: number;
   outer: number;
   dead: number;
+  // Phone layout only (desktop leaves these unset → circle, outer × ratio,
+  // 1×). squash = horizontal / vertical radius: a short, wide reel cell gets
+  // an ellipse, and hit-testing stretches dy by the same factor so every
+  // sector still sits exactly under its badge. itemR is the horizontal item
+  // radius; itemScale shrinks badges only when neighbours would touch.
+  squash?: number;
+  itemR?: number;
+  itemScale?: number;
 };
 
 function computeReelGeometry(vp: Viewport, side: "left" | "right"): ReelGeometry {
@@ -75,6 +83,91 @@ function computeReelGeometry(vp: Viewport, side: "left" | "right"): ReelGeometry
   const outer = Math.min(halfW * 0.42, usableH * 0.46);
   const dead = outer * DEAD_ZONE_RATIO;
   return { cx, cy, outer, dead };
+}
+
+// ── Phone layout (KAN-220) ────────────────────────────────────────────────
+// Must match the media query in globals.css. Portrait phones and landscape
+// phones (short viewports) get a one-screen grid where the reel owns the
+// biggest cell; desktop keeps the floating layout above.
+const PHONE_QUERY = "(max-width: 639px), (max-height: 500px)";
+function subscribePhone(onChange: () => void) {
+  const mq = window.matchMedia(PHONE_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+const phoneSnapshot = () => window.matchMedia(PHONE_QUERY).matches;
+const phoneServerSnapshot = () => false;
+
+type SlotRect = { x: number; y: number; w: number; h: number };
+
+// Compact phone badge text: song palettes resolve romanNumeral === symbol,
+// so show the pretty symbol once instead of "CM" over "C".
+function compactBadgeText(slot: ChordSlot): { main: string; sub: string | null } {
+  const pretty = prettyChordSymbol(slot.symbol);
+  if (slot.romanNumeral === slot.symbol) return { main: pretty, sub: null };
+  return { main: slot.romanNumeral, sub: pretty };
+}
+
+// Big song palettes (Someone Like You has 12 chords) use a denser badge.
+const DENSE_PALETTE = 9;
+
+// Badge box estimate for the compact phone badge (see .as-chord in
+// globals.css): JetBrains Mono advances 0.6em; main line 17px (15px dense),
+// sub line 10px.
+function estimatePhoneBadge(items: ChordSlot[]): { w: number; h: number } {
+  const dense = items.length >= DENSE_PALETTE;
+  let w = dense ? 52 : 64;
+  let h = dense ? 40 : 44;
+  for (const slot of items) {
+    const { main, sub } = compactBadgeText(slot);
+    w = Math.max(w, (dense ? 16 : 20) + main.length * (dense ? 9 : 10.2), sub ? 20 + sub.length * 6 : 0);
+    if (sub) h = Math.max(h, dense ? 44 : 48);
+  }
+  return { w: Math.ceil(w), h };
+}
+
+// Fit the ring inside the measured reel slot: badges stay inside the slot
+// and never overlap their neighbours. The ring may flatten into an ellipse
+// (never taller than wide, at most 1 : 0.6) to use a wide, short cell; if
+// that still isn't room enough, badges shrink (itemScale) rather than spill
+// onto other panels.
+function computePhoneReelGeometry(
+  slot: SlotRect,
+  n: number,
+  badge: { w: number; h: number },
+): ReelGeometry {
+  const cx = slot.x + slot.w / 2;
+  const cy = slot.y + slot.h / 2;
+  const halfW = slot.w / 2;
+  const halfH = slot.h / 2;
+  const outerY = Math.max(40, Math.min(halfW, halfH) - 2);
+  const outerX = Math.max(outerY, Math.min(halfW - 2, outerY / 0.6));
+  const squash = outerX / outerY;
+  const PAD = 4;
+  // Largest horizontal item radius that keeps every badge inside the cell.
+  const rMax = Math.max(
+    24,
+    Math.min(halfW - badge.w / 2 - 2, (halfH - badge.h / 2 - 2) * squash),
+  );
+  // Largest badge scale at which adjacent badges clear each other.
+  const fitScale = (r: number) => {
+    let sc = 1;
+    for (let i = 0; i < n && n > 1; i++) {
+      const a = itemPosition(i, n, r);
+      const b = itemPosition((i + 1) % n, n, r);
+      const dx = Math.abs(b.dx - a.dx);
+      const dy = Math.abs(b.dy - a.dy) / squash;
+      sc = Math.min(sc, Math.max((dx - PAD) / badge.w, (dy - PAD) / badge.h));
+    }
+    return sc;
+  };
+  let itemR = Math.min(outerX * ITEM_RADIUS_RATIO, rMax);
+  let itemScale = fitScale(itemR);
+  if (itemScale < 1) {
+    itemR = rMax;
+    itemScale = Math.max(0.4, fitScale(itemR));
+  }
+  return { cx, cy, outer: outerX, dead: outerX * DEAD_ZONE_RATIO, squash, itemR, itemScale };
 }
 
 function angleToSector(angle: number, n: number): number {
@@ -104,6 +197,9 @@ export default function AirSynthStage() {
   const [droneEnabled, setDroneEnabled] = useState(true);
   const [showCustomKey, setShowCustomKey] = useState(false);
   const [showSongs, setShowSongs] = useState(false);
+  // Phone only: the header's secondary controls live in a collapsible sheet.
+  const [showSettings, setShowSettings] = useState(false);
+  const isPhone = useSyncExternalStore(subscribePhone, phoneSnapshot, phoneServerSnapshot);
 
   const [songId, setSongId] = useState<string | null>(null);
   const [songCursor, setSongCursor] = useState<SongCursor>({ structureIdx: 0, chordIdx: 0 });
@@ -256,7 +352,34 @@ export default function AirSynthStage() {
   );
   const chords = song && paletteSlots.length > 0 ? paletteSlots : diatonicChords;
 
-  const rightGeo = useMemo(() => computeReelGeometry(viewport, "right"), [viewport]);
+  // Phone layout: the reel fills a grid cell (.as-reel-slot) sized by CSS;
+  // its measured box drives the ring geometry. Desktop keeps the viewport math.
+  const reelSlotRef = useRef<HTMLDivElement>(null);
+  const [reelSlot, setReelSlot] = useState<SlotRect | null>(null);
+  const rightGeo = useMemo(
+    () =>
+      isPhone && reelSlot
+        ? computePhoneReelGeometry(reelSlot, chords.length, estimatePhoneBadge(chords))
+        : computeReelGeometry(viewport, "right"),
+    [isPhone, reelSlot, chords, viewport],
+  );
+  // Until the phone slot is measured, don't paint the ring at desktop coords.
+  const reelReady = !isPhone || reelSlot != null;
+
+  // Phone: the section strip is one horizontally-scrolling row — keep the
+  // active section in view. On desktop the strip wraps, so this is a no-op.
+  const sectionStripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const strip = sectionStripRef.current;
+    scrollIntoStrip(strip, strip?.children[songCursor.structureIdx]);
+  }, [songCursor.structureIdx, songId]);
+  // Same for the section's chord row: the label, then the chips (their
+  // wrapper is display: contents on phones, so the row is the scroller).
+  const ribbonRowRef = useRef<HTMLDivElement>(null);
+  const ribbonChordsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scrollIntoStrip(ribbonRowRef.current, ribbonChordsRef.current?.children[songCursor.chordIdx]);
+  }, [songCursor.chordIdx, songCursor.structureIdx, songId]);
 
   useEffect(() => {
     const onResize = () =>
@@ -265,6 +388,28 @@ export default function AirSynthStage() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!isPhone) return;
+    const el = reelSlotRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setReelSlot((prev) =>
+        prev && prev.x === r.left && prev.y === r.top && prev.w === r.width && prev.h === r.height
+          ? prev
+          : { x: r.left, y: r.top, w: r.width, h: r.height },
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isPhone]);
 
   // Track the real header height — it changes when piano-flavor row, fills
   // row, or songs/custom-key dropdown opens/closes. Floaters below the header
@@ -488,7 +633,8 @@ export default function AirSynthStage() {
         slices: number,
       ): number | null => {
         const dx = x - geo.cx;
-        const dy = y - geo.cy;
+        // Phone ellipse: stretch dy back to a circle (squash is 1 on desktop).
+        const dy = (y - geo.cy) * (geo.squash ?? 1);
         const dist = Math.hypot(dx, dy);
         if (dist < geo.dead) return null;
         return angleToSector(Math.atan2(dy, dx), slices);
@@ -790,13 +936,27 @@ export default function AirSynthStage() {
     handleSongClear();
   };
 
+  const chordShown = audioReady && chordIndex !== null && chords[chordIndex] != null;
+  // Phone: PAUSED sits on the reel's centre rather than the viewport's.
+  const reelCentreStyle = isPhone
+    ? ({ top: rightGeo.cy, left: rightGeo.cx, bottom: "auto", translate: "-50% -50%" } as const)
+    : undefined;
+
   return (
-    <div className="relative min-h-screen w-screen overflow-hidden text-white">
+    <div
+      className="as-root relative min-h-screen w-screen overflow-hidden text-white"
+      data-twohand={twoHandHint ? "on" : undefined}
+    >
       <Visualizer />
 
-      <div ref={headerRef} className="fixed inset-x-0 top-0 z-30 px-4 py-3 flex flex-wrap items-center gap-2 backdrop-blur-md bg-black/30 border-b border-white/10">
-        <h1 className="font-semibold text-sm tracking-[0.3em] uppercase mr-3">AirSynth</h1>
-        <div className="flex flex-wrap gap-2">
+      <div
+        ref={headerRef}
+        className="as-header fixed inset-x-0 top-0 z-30 px-4 py-3 flex flex-wrap items-center gap-2 backdrop-blur-md bg-black/30 border-b border-white/10"
+        data-settings={showSettings ? "open" : "closed"}
+        data-open={showSettings || showSongs ? "true" : undefined}
+      >
+        <h1 className="as-title font-semibold text-sm tracking-[0.3em] uppercase mr-3">AirSynth</h1>
+        <div className="as-preset-group flex flex-wrap gap-2">
           {VIBE_PRESETS.map((preset) => {
             const presetStyle = preset.chordStyle ?? "triad";
             const active =
@@ -807,7 +967,7 @@ export default function AirSynthStage() {
               <button
                 key={preset.id}
                 onClick={() => handlePresetClick(preset.id)}
-                className={`text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
+                className={`as-secondary text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
                   active
                     ? "bg-purple-500/40 border-purple-300 text-white"
                     : "bg-white/5 border-white/10 text-white/70 hover:bg-white/10"
@@ -819,13 +979,16 @@ export default function AirSynthStage() {
           })}
           <button
             onClick={() => setShowCustomKey((s) => !s)}
-            className="text-[11px] px-3 py-1.5 rounded-full border border-dashed border-white/20 text-white/60 hover:text-white cursor-pointer"
+            className="as-secondary text-[11px] px-3 py-1.5 rounded-full border border-dashed border-white/20 text-white/60 hover:text-white cursor-pointer"
           >
             {showCustomKey ? "Hide custom" : "Custom key…"}
           </button>
           <button
-            onClick={() => setShowSongs((s) => !s)}
-            className={`text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
+            onClick={() => {
+              setShowSongs((s) => !s);
+              setShowSettings(false);
+            }}
+            className={`as-songs-btn text-[11px] px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
               song
                 ? "bg-amber-500/30 border-amber-300/60 text-amber-50"
                 : "border-dashed border-white/20 text-white/60 hover:text-white"
@@ -836,15 +999,30 @@ export default function AirSynthStage() {
           {song && (
             <button
               onClick={handleSongClear}
-              className="text-[11px] px-2.5 py-1.5 rounded-full border border-white/15 text-white/55 hover:text-white cursor-pointer"
+              className="as-exit-btn text-[11px] px-2.5 py-1.5 rounded-full border border-white/15 text-white/55 hover:text-white cursor-pointer"
               title="Exit song mode"
+              aria-label="Exit song mode"
             >
               ✕
             </button>
           )}
         </div>
 
-        <div className="ml-auto flex items-center gap-3 text-[11px] text-white/70">
+        {/* Phone only (hidden on desktop): opens the settings sheet. */}
+        <button
+          type="button"
+          onClick={() => {
+            setShowSettings((s) => !s);
+            setShowSongs(false);
+          }}
+          className="as-settings-btn hidden text-[11px] px-3 rounded-full border border-white/15 text-white/75 cursor-pointer"
+          aria-expanded={showSettings}
+          aria-label={showSettings ? "Close settings" : "Open settings"}
+        >
+          {showSettings ? "Done" : "⚙ Sound"}
+        </button>
+
+        <div className="as-secondary as-controls ml-auto flex items-center gap-3 text-[11px] text-white/70">
           <span className="font-mono text-white/90" title={song && transposeSemis !== 0 ? `Original: ${baseSong?.rootKey} · transposed ${transposeSemis > 0 ? "+" : ""}${transposeSemis}` : undefined}>
             {effectiveRootKey} {effectiveScaleType}
             {chordStyle === "seventh" && <span className="text-yellow-200/90"> · 7ths</span>}
@@ -1047,7 +1225,7 @@ export default function AirSynthStage() {
         </div>
 
         {fillsEnabled && song && (
-          <div className="basis-full flex flex-wrap gap-1 pt-1">
+          <div className="as-secondary as-sheet-row basis-full flex flex-wrap gap-1 pt-1">
             <span className="text-[9px] uppercase tracking-[0.3em] text-amber-200/70 self-center mr-2">Fill</span>
             {FILLERS.map((f) => (
               <button
@@ -1068,7 +1246,7 @@ export default function AirSynthStage() {
         )}
 
         {instrument === "piano" && (
-          <div className="basis-full flex flex-wrap gap-1 pt-1">
+          <div className="as-secondary as-sheet-row basis-full flex flex-wrap gap-1 pt-1">
             <span className="text-[9px] uppercase tracking-[0.3em] text-white/45 self-center mr-2">Piano</span>
             {PIANO_FLAVORS.map((f) => (
               <button
@@ -1093,7 +1271,7 @@ export default function AirSynthStage() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="basis-full overflow-hidden"
+              className="as-songs-panel basis-full overflow-hidden"
             >
               <div className="flex flex-wrap gap-1.5 py-2">
                 {SONGS.map((s) => {
@@ -1128,7 +1306,7 @@ export default function AirSynthStage() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="basis-full overflow-hidden"
+              className="as-secondary as-custom-panel basis-full overflow-hidden"
             >
               <div className="flex flex-wrap gap-1 py-2">
                 {KEYS.map((k) => (
@@ -1162,10 +1340,10 @@ export default function AirSynthStage() {
 
       {song && (lyricView || lyricsStatus !== "idle") && (
         <div
-          className="fixed left-1/2 -translate-x-1/2 z-20 pointer-events-none w-[min(720px,92vw)] text-center"
+          className="as-lyrics fixed left-1/2 -translate-x-1/2 z-20 pointer-events-none w-[min(720px,92vw)] text-center"
           style={{ top: headerHeight + 110 }}
         >
-          <div className="px-4 py-3 rounded-xl backdrop-blur-md bg-black/35 border border-white/10">
+          <div className="as-lyrics-box px-4 py-3 rounded-xl backdrop-blur-md bg-black/35 border border-white/10">
             {lyricsStatus === "loading" && (
               <div className="text-[11px] text-white/40 italic">loading lyrics…</div>
             )}
@@ -1174,7 +1352,7 @@ export default function AirSynthStage() {
             )}
             {lyricsStatus === "ready" && lyricView && (
               <>
-                <div className="text-[12px] text-white/35 leading-tight min-h-[1em]">
+                <div className="as-lyric-prev text-[12px] text-white/35 leading-tight min-h-[1em]">
                   {lyricView.prev?.text ?? ""}
                 </div>
                 <ChordedLyricLine
@@ -1182,7 +1360,7 @@ export default function AirSynthStage() {
                   markers={lyricView.markers}
                   currentChordIdx={globalCursorPos}
                 />
-                <div className="text-[13px] text-white/45 leading-tight mt-1 min-h-[1em]">
+                <div className="as-lyric-next text-[13px] text-white/45 leading-tight mt-1 min-h-[1em]">
                   {lyricView.next?.text ?? ""}
                 </div>
               </>
@@ -1193,12 +1371,15 @@ export default function AirSynthStage() {
 
       {song && currentSection && (
         <div
-          className="fixed left-1/2 -translate-x-1/2 z-20 pointer-events-auto"
+          className="as-ribbon fixed left-1/2 -translate-x-1/2 z-20 pointer-events-auto"
           style={{ top: headerHeight + 8 }}
         >
-          <div className="flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl backdrop-blur-md bg-black/40 border border-white/10">
+          <div className="as-ribbon-box flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl backdrop-blur-md bg-black/40 border border-white/10">
             {/* Clickable section strip — jump to any verse / chorus / bridge */}
-            <div className="flex items-center gap-0.5 flex-wrap justify-center max-w-[78vw]">
+            <div
+              ref={sectionStripRef}
+              className="as-section-strip flex items-center gap-0.5 flex-wrap justify-center max-w-[78vw]"
+            >
               {song.structure.map((id, i) => {
                 const sec = song.sections.find((s) => s.id === id);
                 if (!sec) return null;
@@ -1219,8 +1400,8 @@ export default function AirSynthStage() {
                 );
               })}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="text-[10px] uppercase tracking-[0.25em] whitespace-nowrap">
+            <div ref={ribbonRowRef} className="as-ribbon-row flex items-center gap-3">
+              <div className="as-ribbon-label text-[10px] uppercase tracking-[0.25em] whitespace-nowrap">
                 <span className="text-amber-200/85">{currentSection.label}</span>
                 <span className="text-white/25 mx-1.5">·</span>
                 <span className="text-white/55 font-mono normal-case tracking-normal">
@@ -1241,7 +1422,7 @@ export default function AirSynthStage() {
                   </>
                 )}
               </div>
-              <div className="flex gap-1.5">
+              <div ref={ribbonChordsRef} className="as-ribbon-chords flex gap-1.5">
                 {sectionChordSymbols(currentSection).map((symbol, i) => {
                   const isExpected = i === songCursor.chordIdx;
                   return (
@@ -1276,26 +1457,32 @@ export default function AirSynthStage() {
         onPatternClick={handlePatternClick}
         topOffset={headerHeight + 12}
       />
-      <RadialReel
-        geo={rightGeo}
-        items={chords}
-        activeIndex={chordIndex}
-        handPresent={rightPresent}
-        accent="cyan"
-        label="right hand · point at a chord · or press 1..7"
-        showRings
-        renderItem={(c: ChordSlot, i, active) => (
-          <ChordBadge
-            slot={c}
-            active={active}
-            shortcut={String(i + 1)}
-            onClick={() => handleChordClick(i)}
-            clickable={!rightPresent}
-            dim={song != null && expectedIdx != null && i !== expectedIdx && !active}
-            expected={song != null && i === expectedIdx}
-          />
-        )}
-      />
+      {/* Phone only: the grid cell the reel fills (measured → rightGeo). */}
+      <div ref={reelSlotRef} className="as-reel-slot hidden" aria-hidden />
+      {reelReady && (
+        <RadialReel
+          geo={rightGeo}
+          items={chords}
+          activeIndex={chordIndex}
+          handPresent={rightPresent}
+          accent="cyan"
+          label="right hand · point at a chord · or press 1..7"
+          showRings
+          renderItem={(c: ChordSlot, i, active) => (
+            <ChordBadge
+              slot={c}
+              active={active}
+              shortcut={String(i + 1)}
+              onClick={() => handleChordClick(i)}
+              clickable={!rightPresent}
+              dim={song != null && expectedIdx != null && i !== expectedIdx && !active}
+              expected={song != null && i === expectedIdx}
+              compact={isPhone}
+              dense={chords.length >= DENSE_PALETTE}
+            />
+          )}
+        />
+      )}
 
       {leftCursor && (
         <CursorDot x={leftCursor.x} y={leftCursor.y} color="#a78bfa" />
@@ -1304,15 +1491,26 @@ export default function AirSynthStage() {
         <CursorDot x={rightCursor.x} y={rightCursor.y} color="#67e8f9" />
       )}
 
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 text-[11px] text-white/55 max-w-xl text-center leading-relaxed pointer-events-none">
+      <div
+        className="as-hint fixed bottom-4 left-1/2 -translate-x-1/2 z-30 text-[11px] text-white/55 max-w-xl text-center leading-relaxed pointer-events-none"
+        data-covered={chordShown ? "true" : undefined}
+      >
         {!trackingStarted && (
-          <p>
-            Click <span className="text-white/85">Enable hand tracking</span> (bottom-right) to start.
-            <br />
-            <span className="opacity-70">
-              Right hand: point at a chord · Left hand: hold a gesture to choose the pattern
-            </span>
-          </p>
+          <>
+            <p className="as-desktop-only">
+              Click <span className="text-white/85">Enable hand tracking</span> (bottom-right) to start.
+              <br />
+              <span className="opacity-70">
+                Right hand: point at a chord · Left hand: hold a gesture to choose the pattern
+              </span>
+            </p>
+            {/* Phone copy: the camera button sits beside this text, and a tap
+                on a chord plays it (hand tracking is optional). */}
+            <p className="as-phone-only">
+              <span className="text-white/85">Tap a chord</span> to play, or use the{" "}
+              <span className="text-white/85">camera</span> and point with your right hand.
+            </p>
+          </>
         )}
         {trackingStarted && !audioReady && audioLoading && <p>Loading piano samples…</p>}
         {trackingStarted && audioReady && !rightPresent && (
@@ -1333,22 +1531,28 @@ export default function AirSynthStage() {
         )}
         {trackingStarted && audioReady && song && (
           <p className="mt-1 text-[10px] text-cyan-200/55">
-            Both ✊ = pause · 👍👍 = next section · ☝️☝️ = previous · hold ~200ms
+            <span className="as-desktop-only">
+              Both ✊ = pause · 👍👍 = next section · ☝️☝️ = previous · hold ~200ms
+            </span>
+            <span className="as-phone-only">✊✊ pause · 👍👍 next · ☝️☝️ back</span>
           </p>
         )}
       </div>
 
       {paused && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none">
-          <div className="px-6 py-3 rounded-2xl backdrop-blur-md bg-black/60 border border-white/15 text-center">
+        <div
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none"
+          style={reelCentreStyle}
+        >
+          <div className="as-paused px-6 py-3 rounded-2xl backdrop-blur-md bg-black/60 border border-white/15 text-center">
             <div className="text-3xl font-light tracking-[0.4em] text-white/85">PAUSED</div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-white/50 mt-1">press space to resume</div>
           </div>
         </div>
       )}
 
-      {audioReady && chordIndex !== null && chords[chordIndex] && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+      {chordShown && chordIndex !== null && (
+        <div className="as-diagram fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
           <div className="px-3 py-2 rounded-xl backdrop-blur-md bg-black/55 border border-white/10 text-center">
             <div className="text-[9px] uppercase tracking-[0.3em] text-amber-200/85 mb-1 font-mono">
               {prettyChordSymbol(chords[chordIndex].symbol)}
@@ -1359,7 +1563,7 @@ export default function AirSynthStage() {
       )}
 
       {twoHandHint && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+        <div className="as-twohand fixed bottom-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
           <div className="px-4 py-2 rounded-2xl backdrop-blur-md bg-black/55 border border-white/15 text-center min-w-[180px]">
             <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200/85">
               {twoHandHint.combo === "both-fist" && "✊ ✊  pause"}
@@ -1404,6 +1608,7 @@ function RadialReel<T>({
     accent === "purple" ? "rgba(167, 139, 250, 0.55)" : "rgba(103, 232, 249, 0.55)";
   const accentText =
     accent === "purple" ? "text-purple-300/80" : "text-cyan-300/80";
+  const squash = geo.squash ?? 1;
 
   return (
     <>
@@ -1414,9 +1619,9 @@ function RadialReel<T>({
             className="fixed z-10 rounded-full pointer-events-none"
             style={{
               left: geo.cx - geo.outer,
-              top: geo.cy - geo.outer,
+              top: geo.cy - geo.outer / squash,
               width: geo.outer * 2,
-              height: geo.outer * 2,
+              height: (geo.outer * 2) / squash,
               border: "1px dashed rgba(255,255,255,0.10)",
               boxShadow: handPresent ? `0 0 60px ${accentColor}` : undefined,
               transition: "box-shadow 200ms ease",
@@ -1427,9 +1632,9 @@ function RadialReel<T>({
             className="fixed z-10 rounded-full pointer-events-none"
             style={{
               left: geo.cx - geo.dead,
-              top: geo.cy - geo.dead,
+              top: geo.cy - geo.dead / squash,
               width: geo.dead * 2,
-              height: geo.dead * 2,
+              height: (geo.dead * 2) / squash,
               border: "1px dashed rgba(255,255,255,0.08)",
             }}
           />
@@ -1437,7 +1642,7 @@ function RadialReel<T>({
       )}
       {/* Reel label */}
       <div
-        className={`fixed z-10 text-[10px] uppercase tracking-[0.3em] pointer-events-none ${accentText}`}
+        className={`as-reel-label fixed z-10 text-[10px] uppercase tracking-[0.3em] pointer-events-none ${accentText}`}
         style={{
           left: geo.cx,
           top: geo.cy - geo.outer - 22,
@@ -1449,16 +1654,19 @@ function RadialReel<T>({
       </div>
       {/* Items positioned around the ring */}
       {items.map((item, i) => {
-        const { dx, dy } = itemPosition(i, items.length, geo.outer * ITEM_RADIUS_RATIO);
+        const pos = itemPosition(i, items.length, geo.itemR ?? geo.outer * ITEM_RADIUS_RATIO);
+        const dx = pos.dx;
+        const dy = pos.dy / squash;
         const active = i === activeIndex && handPresent;
+        const scale = (geo.itemScale ?? 1) * (active ? 1.08 : 1);
         return (
           <div
             key={i}
-            className="fixed z-20 pointer-events-none transition-transform duration-200"
+            className="as-reel-item fixed z-20 pointer-events-none transition-transform duration-200"
             style={{
               left: geo.cx + dx,
               top: geo.cy + dy,
-              transform: `translate(-50%, -50%) scale(${active ? 1.08 : 1})`,
+              transform: `translate(-50%, -50%) scale(${scale})`,
             }}
           >
             {renderItem(item, i, active)}
@@ -1468,6 +1676,10 @@ function RadialReel<T>({
     </>
   );
 }
+
+// Phone: the lyric box has a fixed height so a long line can't push the
+// reel around mid-song; lines longer than this get a smaller font instead.
+const LONG_LYRIC_CHARS = 36;
 
 function ChordedLyricLine({
   text,
@@ -1494,7 +1706,10 @@ function ChordedLyricLine({
   }
 
   return (
-    <div className="flex flex-wrap justify-center gap-x-2 mt-1 leading-snug min-h-[2.5em]">
+    <div
+      className="as-lyric-line flex flex-wrap justify-center gap-x-2 mt-1 leading-snug min-h-[2.5em]"
+      data-long={text.length > LONG_LYRIC_CHARS ? "true" : undefined}
+    >
       {words.map((word, i) => {
         const wc = wordChords[i];
         const passed = wc != null && wc.chordIdx < currentChordIdx;
@@ -1503,7 +1718,7 @@ function ChordedLyricLine({
         return (
           <span key={i} className="inline-flex flex-col items-center">
             <span
-              className={`text-[11px] font-mono leading-none h-[14px] transition-colors ${
+              className={`as-lyric-chord text-[11px] font-mono leading-none h-[14px] transition-colors ${
                 now
                   ? "text-amber-200 font-bold"
                   : upcoming
@@ -1520,7 +1735,7 @@ function ChordedLyricLine({
               {wc ? prettyChordSymbol(wc.symbol) : "·"}
             </span>
             <span
-              className={`text-lg md:text-xl font-medium leading-snug ${
+              className={`as-lyric-word text-lg md:text-xl font-medium leading-snug ${
                 now ? "text-amber-50" : "text-white/85"
               }`}
               style={{ textShadow: now ? "0 0 12px rgba(251,191,36,0.3)" : undefined }}
@@ -1553,17 +1768,31 @@ function PatternColumn({
   onPatternClick: (i: number) => void;
   topOffset: number;
 }) {
+  // Phone: the grid becomes one scrolling strip — keep the active pattern
+  // (picked by a left-hand shape) in view. No-op on desktop (no overflow).
+  const gridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const grid = gridRef.current;
+    scrollIntoStrip(grid, grid?.children[activeIndex]);
+  }, [activeIndex, patterns]);
   return (
     <div
-      className="fixed z-20 left-2"
+      className="as-patterns fixed z-20 left-2"
       style={{ top: topOffset, width: 400 }}
     >
-      <div className="text-[9px] uppercase tracking-[0.3em] text-purple-300/70 pl-1 pb-1">
-        {leftGesture
-          ? `${patterns[activeIndex]?.gestureLabel ?? "gesture"}`
-          : `left hand · ${patternKeys[0]?.toUpperCase()}…${patternKeys[patternKeys.length - 1]?.toUpperCase()}`}
+      <div className="as-patterns-label text-[9px] uppercase tracking-[0.3em] text-purple-300/70 pl-1 pb-1">
+        {leftGesture ? (
+          `${patterns[activeIndex]?.gestureLabel ?? "gesture"}`
+        ) : (
+          <>
+            <span className="as-desktop-only">
+              {`left hand · ${patternKeys[0]?.toUpperCase()}…${patternKeys[patternKeys.length - 1]?.toUpperCase()}`}
+            </span>
+            <span className="as-phone-only">pattern · tap or left-hand shape</span>
+          </>
+        )}
       </div>
-      <div className="grid grid-cols-2 gap-1.5">
+      <div ref={gridRef} className="as-pattern-grid grid grid-cols-2 gap-1.5">
       {patterns.map((p, i) => {
         const active = i === activeIndex && (leftPresent || !leftGesture);
         const playing = active && leftPresent;
@@ -1590,10 +1819,10 @@ function PatternColumn({
                 <div className={`flex items-baseline justify-between gap-1 text-[12px] font-mono leading-tight ${active ? "text-white" : "text-white/75"}`}>
                   <span>{p.label}</span>
                 </div>
-                <div className={`text-[9.5px] font-mono leading-tight mt-0.5 truncate ${active ? "text-amber-100/90" : "text-amber-100/55"}`}>
+                <div className={`as-pattern-notes text-[9.5px] font-mono leading-tight mt-0.5 truncate ${active ? "text-amber-100/90" : "text-amber-100/55"}`}>
                   {p.notes}
                 </div>
-                <div className={`text-[8.5px] leading-tight mt-0.5 truncate italic ${active ? "text-white/55" : "text-white/40"}`}>
+                <div className={`as-pattern-desc text-[8.5px] leading-tight mt-0.5 truncate italic ${active ? "text-white/55" : "text-white/40"}`}>
                   {p.description}
                 </div>
                 <div className="flex gap-0.5 mt-1">
@@ -1619,7 +1848,7 @@ function PatternColumn({
                   })}
                 </div>
               </div>
-              <span className="text-[9px] font-mono text-white/35 leading-none">
+              <span className="as-pattern-key text-[9px] font-mono text-white/35 leading-none">
                 {patternKeys[i]?.toUpperCase()}
               </span>
             </div>
@@ -1639,6 +1868,8 @@ function ChordBadge({
   clickable,
   dim = false,
   expected = false,
+  compact = false,
+  dense = false,
 }: {
   slot: ChordSlot;
   active: boolean;
@@ -1647,8 +1878,13 @@ function ChordBadge({
   clickable?: boolean;
   dim?: boolean;
   expected?: boolean;
+  /** Phone layout: smaller badge, no key hint / note names (see .as-chord). */
+  compact?: boolean;
+  /** With compact: a 9+ chord palette, even smaller (see .as-chord-dense). */
+  dense?: boolean;
 }) {
   const palette = FUNCTION_COLORS[slot.function];
+  const compactText = compact ? compactBadgeText(slot) : null;
   const amberGlow = "rgba(251, 191, 36, 0.55)";
   const amberRing = "rgba(252, 211, 77, 0.75)";
   return (
@@ -1656,7 +1892,7 @@ function ChordBadge({
       type="button"
       onClick={clickable ? onClick : undefined}
       disabled={!clickable}
-      className={`relative rounded-2xl border px-4 py-2.5 text-center backdrop-blur-sm transition-all ${
+      className={`${compact ? (dense ? "as-chord as-chord-dense " : "as-chord ") : ""}relative rounded-2xl border px-4 py-2.5 text-center backdrop-blur-sm transition-all ${
         clickable ? "cursor-pointer pointer-events-auto" : "cursor-default"
       }`}
       style={{
@@ -1679,23 +1915,36 @@ function ChordBadge({
           : undefined,
       }}
     >
-      {shortcut && (
-        <span
-          className="absolute top-1 left-1.5 text-[9px] font-mono text-white/40 leading-none"
-          aria-hidden
-        >
-          {shortcut}
-        </span>
+      {compactText ? (
+        <>
+          <div className={`as-chord-main font-mono ${active ? "text-white" : "text-white/85"}`}>
+            {compactText.main}
+          </div>
+          {compactText.sub && (
+            <div className="as-chord-sub font-mono text-white/55">{compactText.sub}</div>
+          )}
+        </>
+      ) : (
+        <>
+          {shortcut && (
+            <span
+              className="absolute top-1 left-1.5 text-[9px] font-mono text-white/40 leading-none"
+              aria-hidden
+            >
+              {shortcut}
+            </span>
+          )}
+          <div className={`font-mono text-xl ${active ? "text-white" : "text-white/70"}`}>
+            {slot.romanNumeral}
+          </div>
+          <div className="text-[11px] font-mono text-white/55 mt-0.5">
+            {prettyChordSymbol(slot.symbol)}
+          </div>
+          <div className="text-[9px] text-white/40 mt-0.5">
+            {slot.notes.map((n) => n.replace(/\d/g, "")).join(" ")}
+          </div>
+        </>
       )}
-      <div className={`font-mono text-xl ${active ? "text-white" : "text-white/70"}`}>
-        {slot.romanNumeral}
-      </div>
-      <div className="text-[11px] font-mono text-white/55 mt-0.5">
-        {prettyChordSymbol(slot.symbol)}
-      </div>
-      <div className="text-[9px] text-white/40 mt-0.5">
-        {slot.notes.map((n) => n.replace(/\d/g, "")).join(" ")}
-      </div>
     </button>
   );
 }
@@ -1719,6 +1968,16 @@ function CursorDot({ x, y, color }: { x: number; y: number; color: string }) {
       }}
     />
   );
+}
+
+// Centre `child` within a horizontally-scrolling strip. Does nothing when
+// the strip doesn't overflow (desktop wraps/grids), so desktop is unaffected.
+function scrollIntoStrip(strip: HTMLElement | null, child: Element | null | undefined) {
+  if (!strip || !child || strip.scrollWidth <= strip.clientWidth + 1) return;
+  const stripBox = strip.getBoundingClientRect();
+  const childBox = child.getBoundingClientRect();
+  const offset = childBox.left - stripBox.left + strip.scrollLeft;
+  strip.scrollTo({ left: offset - (strip.clientWidth - childBox.width) / 2, behavior: "smooth" });
 }
 
 function prettyChordSymbol(symbol: string): string {

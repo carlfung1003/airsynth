@@ -35,3 +35,512 @@ html, body {
 input[type="range"] {
   font-size: 16px;
 }
+
+/* ── Phone layout (KAN-220) ─────────────────────────────────────────────
+   Desktop is a set of floating panels positioned around a right-half reel.
+   On a phone that pile overlapped and ran off the right edge, so phones get
+   a one-screen grid instead: a one-row top bar (everything else folds into
+   a "Sound" sheet), song ribbon + lyric, the chord reel in the biggest cell
+   (with a floor), then the pattern strip and a status row (hint / chord
+   diagram / two-hand progress share one slot) beside the camera control.
+   The reel's geometry is measured from .as-reel-slot in AirSynthStage.tsx;
+   PHONE_QUERY there must match this media query.
+   Unlayered rules here override the Tailwind utilities; !important is only
+   used against inline top/width/min-width styles. */
+.as-phone-only {
+  display: none;
+}
+
+@media (max-width: 639px), (max-height: 500px) {
+  /* Every row above and below the reel has a fixed height, so nothing
+     mid-song (a longer lyric line, a new section's chords, a new hint) can
+     move or resize the reel under a pointing hand. */
+  :root {
+    --as-bar-h: calc(max(8px, env(safe-area-inset-top)) + 44px);
+    --as-lyrics-h: 74px;
+    --as-status-h: 56px;
+    --as-reel-floor: 220px;
+  }
+
+  .as-desktop-only {
+    display: none;
+  }
+  .as-phone-only {
+    display: revert;
+  }
+
+  .as-root {
+    display: grid;
+    height: 100dvh;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows:
+      var(--as-bar-h) auto minmax(0, auto) minmax(var(--as-reel-floor), 1fr)
+      auto var(--as-status-h);
+    grid-template-areas:
+      "bar bar"
+      "ribbon ribbon"
+      "lyrics lyrics"
+      "reel reel"
+      "patterns patterns"
+      "status tracker";
+    column-gap: 8px;
+    padding: 0 max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+
+  /* Top bar: title · Songs · ✕ · Sound. Opening Songs or Sound turns the
+     header into a sheet that scrolls inside itself over the stage. */
+  .as-header {
+    padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px
+      max(12px, env(safe-area-inset-left));
+    column-gap: 8px;
+    row-gap: 10px;
+    max-height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .as-header[data-open="true"] {
+    z-index: 60;
+    padding-bottom: 14px;
+    background: rgba(8, 12, 28, 0.97);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  }
+  /* Line break after the bar row, only while the sheet is open. */
+  .as-header[data-open="true"]::after {
+    content: "";
+    order: 4;
+    flex-basis: 100%;
+    height: 0;
+  }
+  .as-title {
+    order: 0;
+    flex: none;
+    margin-right: 0;
+    letter-spacing: 0.22em;
+  }
+  .as-preset-group {
+    display: contents;
+  }
+  /* Basis 0 so a long song title shrinks (ellipsis) instead of wrapping
+     the Sound button onto a second bar row; grows back to its content. */
+  .as-songs-btn {
+    order: 1;
+    flex: 1 1 0;
+    max-width: max-content;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .as-exit-btn {
+    order: 2;
+    flex: none;
+    position: relative;
+  }
+  /* 36px visual, 44px finger target (stays inside the bar's padding/gap). */
+  .as-exit-btn::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+  .as-settings-btn {
+    display: inline-flex;
+    align-items: center;
+    order: 3;
+    flex: none;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .as-header[data-settings="closed"] .as-secondary {
+    display: none;
+  }
+  .as-secondary {
+    order: 10;
+  }
+  .as-songs-panel {
+    order: 5;
+  }
+  .as-controls {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    margin-left: 0;
+    column-gap: 14px;
+    row-gap: 10px;
+  }
+  .as-sheet-row {
+    order: 11;
+  }
+  .as-custom-panel {
+    order: 12;
+  }
+  .as-header button:not([role="switch"]) {
+    min-height: 36px;
+    min-width: 36px;
+  }
+  .as-header [role="switch"]::after {
+    content: "";
+    position: absolute;
+    inset: -12px -4px;
+  }
+  .as-header input[type="range"] {
+    width: 96px;
+  }
+
+  /* Song ribbon: one scrolling row of sections, then the section's chords. */
+  .as-ribbon {
+    grid-area: ribbon;
+    position: relative;
+    top: auto !important;
+    left: auto;
+    translate: none;
+    min-width: 0;
+    margin-top: 4px;
+  }
+  .as-ribbon-box {
+    gap: 4px;
+    padding: 6px 8px;
+  }
+  .as-section-strip {
+    align-self: stretch;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .as-section-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .as-section-strip > * {
+    flex: none;
+    min-height: 28px;
+  }
+  /* Centre a strip when it fits, scroll from the start when it doesn't. */
+  .as-section-strip > :first-child,
+  .as-ribbon-row > :first-child {
+    margin-left: auto;
+  }
+  .as-section-strip > :last-child,
+  .as-ribbon-chords > :last-child {
+    margin-right: auto;
+  }
+  /* Section label + chord chips: one scrolling row (auto-scrolls to the
+     expected chord), never wrapping to a second line. */
+  .as-ribbon-row {
+    align-self: stretch;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    column-gap: 6px;
+    height: 32px;
+    max-width: 100%;
+    padding: 0 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .as-ribbon-row::-webkit-scrollbar {
+    display: none;
+  }
+  .as-ribbon-row > *,
+  .as-ribbon-chords > * {
+    flex: none;
+  }
+  .as-ribbon-chords {
+    display: contents;
+  }
+  .as-ribbon-label a {
+    position: relative;
+  }
+  .as-ribbon-label a::after {
+    content: "";
+    position: absolute;
+    inset: -8px -6px;
+  }
+
+  .as-lyrics {
+    grid-area: lyrics;
+    position: relative;
+    top: auto !important;
+    left: auto;
+    translate: none;
+    width: auto;
+    height: var(--as-lyrics-h);
+    min-height: 0;
+    margin-top: 4px;
+  }
+  .as-lyrics-box {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    overflow: hidden;
+    padding: 3px 10px 4px;
+  }
+  .as-lyric-prev,
+  .as-lyric-next {
+    display: none;
+  }
+  .as-lyric-line {
+    min-height: 0;
+    margin-top: 0;
+  }
+  .as-lyric-word {
+    font-size: 14px;
+    line-height: 18px;
+  }
+  .as-lyric-line[data-long="true"] .as-lyric-word {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  /* The reel: its cell is measured in JS; ring label moves to the hint. */
+  .as-reel-slot {
+    display: block;
+    grid-area: reel;
+    min-width: 0;
+    min-height: 0;
+  }
+  .as-reel-label {
+    display: none;
+  }
+  .as-chord {
+    min-width: 64px !important;
+    min-height: 44px;
+    padding: 5px 8px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .as-chord-main {
+    font-size: 17px;
+    line-height: 22px;
+  }
+  .as-chord-sub {
+    font-size: 10px;
+    line-height: 13px;
+    margin-top: 1px;
+  }
+  /* 9+ chord palettes (must match estimatePhoneBadge). */
+  .as-chord-dense {
+    min-width: 52px !important;
+    min-height: 40px;
+    padding: 4px 7px;
+    border-radius: 12px;
+  }
+  .as-chord-dense .as-chord-main {
+    font-size: 15px;
+    line-height: 20px;
+  }
+
+  /* Patterns: a single horizontally-scrolling strip of icon + name chips. */
+  .as-patterns {
+    grid-area: patterns;
+    position: relative;
+    top: auto !important;
+    left: auto;
+    width: auto !important;
+    min-width: 0;
+    margin-top: 6px;
+  }
+  .as-patterns-label {
+    padding-bottom: 3px;
+  }
+  .as-pattern-grid {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .as-pattern-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .as-pattern-grid > button {
+    flex: none;
+    min-height: 44px;
+    padding: 5px 10px 5px 8px;
+    scroll-snap-align: start;
+  }
+  .as-pattern-notes,
+  .as-pattern-desc,
+  .as-pattern-key {
+    display: none;
+  }
+
+  /* Status slot: hint text, replaced by the held chord's diagram or the
+     two-hand progress bar while those show (they never stack). */
+  .as-hint,
+  .as-diagram,
+  .as-twohand {
+    grid-area: status;
+    position: relative;
+    bottom: auto;
+    left: auto;
+    translate: none;
+    align-self: center;
+    justify-self: start;
+    min-width: 0;
+    margin-top: 6px;
+  }
+  .as-hint {
+    justify-self: stretch;
+    max-width: none;
+    max-height: var(--as-status-h);
+    overflow: hidden;
+    text-align: left;
+    line-height: 1.35;
+  }
+  .as-hint[data-covered="true"],
+  .as-root[data-twohand="on"] .as-hint,
+  .as-root[data-twohand="on"] .as-diagram,
+  .as-root:has(.as-tracker-error) .as-hint {
+    visibility: hidden;
+  }
+  .as-diagram > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+  }
+  .as-diagram > div > div {
+    margin: 0;
+  }
+  .as-diagram svg {
+    height: calc(var(--as-status-h) - 12px);
+    width: auto;
+  }
+  .as-twohand > div {
+    min-width: 0;
+  }
+
+  /* Camera control: a button in the status row; while running, a small
+     preview with the collapse / stop buttons stacked beside it. */
+  .as-tracker {
+    grid-area: tracker;
+    position: relative;
+    bottom: auto;
+    right: auto;
+    align-self: center;
+    justify-self: end;
+    margin-top: 6px;
+  }
+  .as-tracker-start,
+  .as-tracker-loading {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 16px;
+    white-space: nowrap;
+  }
+  /* Error text needs the whole status row (both cols; never the landscape
+     reel column). */
+  .as-tracker:has(.as-tracker-error) {
+    grid-column: 1 / 3;
+    justify-self: stretch;
+  }
+  /* iOS's permission-denied message is long: clamp it so the box stays
+     inside the status row (title 16px + 2 × 14px lines + padding = 56). */
+  .as-tracker-error {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 10px;
+    align-items: center;
+    max-width: none;
+    max-height: var(--as-status-h);
+    overflow: hidden;
+    padding: 4px 4px 4px 12px;
+  }
+  .as-tracker-error-title {
+    margin: 0;
+    line-height: 16px;
+  }
+  .as-tracker-error-msg {
+    grid-column: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .as-tracker-retry {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin: 0;
+    min-width: 64px;
+    min-height: calc(var(--as-status-h) - 12px);
+    padding: 0 16px;
+    border-radius: 999px;
+  }
+  .as-tracker[data-status="running"] .as-tracker-cam {
+    display: flex;
+    width: auto;
+    height: var(--as-status-h);
+  }
+  .as-tracker-video {
+    height: 100%;
+    width: auto;
+    aspect-ratio: 4 / 3;
+  }
+  .as-tracker-bar {
+    flex-direction: column;
+    justify-content: center;
+    padding: 0;
+  }
+  .as-tracker-bar > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 28px;
+  }
+  .as-tracker-caption {
+    display: none;
+  }
+}
+
+/* Taller portrait phones have room for the upcoming lyric line. */
+@media (max-width: 639px) and (min-height: 640px) {
+  :root {
+    --as-lyrics-h: 92px;
+  }
+  .as-lyric-next {
+    display: block;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+}
+
+/* Short phones (SE sizes, landscape): pay for the reel with the chrome. */
+@media (max-width: 639px) and (max-height: 600px), (max-height: 500px) {
+  :root {
+    --as-status-h: 48px;
+    --as-reel-floor: 180px;
+  }
+  .as-tracker-error-msg {
+    -webkit-line-clamp: 1;
+  }
+}
+
+/* Landscape phone: the reel takes the right-hand column (where a right hand
+   naturally points in the mirrored camera), everything else stacks left. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .as-root {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.15fr);
+    grid-template-rows:
+      var(--as-bar-h) auto minmax(0, auto) minmax(0, 1fr) auto var(--as-status-h);
+    grid-template-areas:
+      "bar bar bar"
+      "ribbon ribbon reel"
+      "lyrics lyrics reel"
+      ". . reel"
+      "patterns patterns reel"
+      "status tracker reel";
+    column-gap: 10px;
+  }
+}

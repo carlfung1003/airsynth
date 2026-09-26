@@ -109,8 +109,12 @@ export async function fetchLyrics(
   const url = new URL("https://lrclib.net/api/get");
   url.searchParams.set("artist_name", artist);
   url.searchParams.set("track_name", title);
+  // Lrclib-Client, not User-Agent: Safari actually sends a custom
+  // User-Agent, and lrclib's CORS preflight only allows
+  // content-type / x-user-agent / lrclib-client — so on iPhone every lyric
+  // fetch failed ("no lyrics found"). Chrome silently drops User-Agent.
   const res = await fetch(url.toString(), {
-    headers: { "User-Agent": USER_AGENT },
+    headers: { "Lrclib-Client": USER_AGENT },
   });
   if (!res.ok) return null;
   const data = (await res.json()) as LrclibResponse;
