@@ -20,3 +20,18 @@ body {
   color: var(--foreground);
   font-family: var(--font-inter), Inter, sans-serif;
 }
+
+/* Mobile Safari hardening (KAN-219).
+   manipulation = no double-tap zoom on quick taps, pinch zoom kept.
+   overscroll none = a downward swipe can't pull-to-refresh mid-song. */
+html, body, button, input, a, summary, label, [role="button"] {
+  touch-action: manipulation;
+}
+html, body {
+  overscroll-behavior-y: none;
+}
+/* The sliders inherit the 11px control-bar text; iOS zooms into any form
+   control under 16px on focus. Font size doesn't change how a range draws. */
+input[type="range"] {
+  font-size: 16px;
+}
