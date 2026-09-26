@@ -17,7 +17,7 @@ const mono = JetBrains_Mono({
 });
 
 const description =
-  "A music game you play with your hands. Point at chords, shape a pattern with the other hand, and sing along to the setlist.";
+  "A music game you play with your hands. Point at chords with one hand, shape a pattern with the other, and sing along to the setlist.";
 
 export const metadata: Metadata = {
   title: "AirSynth",
