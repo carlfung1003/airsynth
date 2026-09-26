@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# art pipeline: raw generator PNGs are not committed (masters are)
+assets/art/raw/

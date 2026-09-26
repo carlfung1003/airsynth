@@ -71,10 +71,10 @@ function PianoDiagram({ slot }: { slot: ChordSlot }) {
         const active = pcs.has(pc);
         const isRoot = pc === root;
         const fill = isRoot
-          ? "rgba(251,191,36,0.85)"
+          ? "#ea5236"
           : active
-            ? "rgba(103,232,249,0.65)"
-            : "rgba(248,250,252,0.92)";
+            ? "#f0b3a5"
+            : "#e8e5de";
         return (
           <rect
             key={`w${pc}`}
@@ -84,7 +84,7 @@ function PianoDiagram({ slot }: { slot: ChordSlot }) {
             height={WKH}
             rx={1}
             fill={fill}
-            stroke="rgba(15,23,42,0.6)"
+            stroke="rgba(11,12,14,0.6)"
             strokeWidth={0.4}
           />
         );
@@ -93,10 +93,10 @@ function PianoDiagram({ slot }: { slot: ChordSlot }) {
         const active = pcs.has(pc);
         const isRoot = pc === root;
         const fill = isRoot
-          ? "rgba(251,191,36,0.95)"
+          ? "#ea5236"
           : active
-            ? "rgba(103,232,249,0.85)"
-            : "rgba(20,20,28,0.95)";
+            ? "#a9412b"
+            : "#17191c";
         const x = BLACK_X[pc] * WKW;
         return (
           <rect
@@ -158,7 +158,7 @@ function FretboardDiagram({
           x2={x(s)}
           y1={PAD_TOP}
           y2={PAD_TOP + FRET_SPACING * numFrets}
-          stroke="rgba(248,250,252,0.7)"
+          stroke="rgba(236,235,231,0.7)"
           strokeWidth={s === 0 || s === 5 ? 1.2 : 0.9}
         />
       ))}
@@ -170,7 +170,7 @@ function FretboardDiagram({
           x2={x(5)}
           y1={PAD_TOP + f * FRET_SPACING}
           y2={PAD_TOP + f * FRET_SPACING}
-          stroke="rgba(248,250,252,0.6)"
+          stroke="rgba(236,235,231,0.6)"
           strokeWidth={f === 0 && startFret === 1 ? 2.5 : 0.7}
         />
       ))}
@@ -180,7 +180,7 @@ function FretboardDiagram({
           x={x(0) - 6}
           y={PAD_TOP + FRET_SPACING * 0.7}
           textAnchor="end"
-          fill="rgba(248,250,252,0.6)"
+          fill="rgba(236,235,231,0.6)"
           fontSize={9}
           fontFamily="monospace"
         >
@@ -195,8 +195,8 @@ function FretboardDiagram({
           width={STRING_SPACING * 5 + 6}
           height={6}
           rx={3}
-          fill="rgba(103,232,249,0.55)"
-          stroke="rgba(103,232,249,0.85)"
+          fill="rgba(234,82,54,0.55)"
+          stroke="rgba(234,82,54,0.9)"
           strokeWidth={0.5}
         />
       )}
@@ -210,7 +210,7 @@ function FretboardDiagram({
               cy={PAD_TOP - 5}
               r={3}
               fill="none"
-              stroke="rgba(248,250,252,0.75)"
+              stroke="rgba(236,235,231,0.75)"
               strokeWidth={1}
             />
           );
@@ -222,7 +222,7 @@ function FretboardDiagram({
               x={x(s)}
               y={PAD_TOP - 2}
               textAnchor="middle"
-              fill="rgba(248,250,252,0.55)"
+              fill="rgba(236,235,231,0.55)"
               fontSize={8}
               fontFamily="monospace"
             >
@@ -245,8 +245,8 @@ function FretboardDiagram({
             cx={x(s)}
             cy={yFret(f) - FRET_SPACING / 2}
             r={4}
-            fill="rgba(251,191,36,0.95)"
-            stroke="rgba(15,23,42,0.85)"
+            fill="#ea5236"
+            stroke="rgba(11,12,14,0.85)"
             strokeWidth={0.6}
           />
         );

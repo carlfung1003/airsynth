@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { HandLandmarker, HandLandmarkerResult } from "@mediapipe/tasks-vision";
+import { EyeIcon, EyeSlashIcon, XIcon } from "@phosphor-icons/react";
 import {
   EMPTY_HAND,
   GESTURE_FRAME_EVENT,
@@ -47,7 +48,6 @@ const PINCH_ON = 0.05;
 const PINCH_OFF = 0.07;
 const SMOOTHING = 0.4;
 
-type Status = "idle" | "loading" | "running" | "error";
 type SmoothedHand = { x: number; y: number } | null;
 
 const HAND_CONNECTIONS: [number, number][] = [
@@ -59,7 +59,21 @@ const HAND_CONNECTIONS: [number, number][] = [
   [0, 17],
 ];
 
-export default function HandTracker({ onStart }: { onStart?: () => void }) {
+export type TrackerStatus = "idle" | "loading" | "running" | "error";
+
+export type HandTrackerHandle = {
+  start: () => void;
+  stop: () => void;
+};
+
+// Camera + MediaPipe hand landmarker. Publishes a GestureFrame per video
+// frame on window (GESTURE_FRAME_EVENT). It stays mounted across screens so
+// the camera survives moving between songs; `visible` only controls the
+// preview tile.
+const HandTracker = forwardRef<HandTrackerHandle, {
+  visible: boolean;
+  onStatus?: (status: TrackerStatus, error?: string) => void;
+}>(function HandTracker({ visible, onStatus }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const landmarkerRef = useRef<HandLandmarker | null>(null);
@@ -71,13 +85,20 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
   const pinchLeftRef = useRef(false);
   const pinchRightRef = useRef(false);
 
-  const [status, setStatus] = useState<Status>("idle");
-  const [error, setError] = useState("");
+  const [status, setStatusState] = useState<TrackerStatus>("idle");
   const [collapsed, setCollapsed] = useState(false);
+  const onStatusRef = useRef(onStatus);
+  useEffect(() => {
+    onStatusRef.current = onStatus;
+  }, [onStatus]);
+  const setStatus = (next: TrackerStatus, error?: string) => {
+    setStatusState(next);
+    onStatusRef.current?.(next, error);
+  };
 
   const start = async () => {
+    if (landmarkerRef.current) return;
     setStatus("loading");
-    setError("");
     try {
       const { FilesetResolver, HandLandmarker } = await import("@mediapipe/tasks-vision");
       const fileset = await FilesetResolver.forVisionTasks(
@@ -102,11 +123,11 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
       video.srcObject = stream;
       await video.play();
       setStatus("running");
-      onStart?.();
       loop();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setStatus("error");
+      landmarkerRef.current?.close();
+      landmarkerRef.current = null;
+      setStatus("error", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -237,10 +258,10 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
       const hand = lm[i];
       const label = handednesses[i]?.[0]?.categoryName ?? "Right";
       const isLeftHand = label === "Left";
-      const lineColor = isLeftHand ? "rgba(167, 139, 250, 0.85)" : "rgba(103, 232, 249, 0.85)";
-      const tipColor = isLeftHand ? "#a78bfa" : "#67e8f9";
+      const lineColor = isLeftHand ? "rgba(236, 235, 231, 0.75)" : "rgba(234, 82, 54, 0.9)";
+      const tipColor = isLeftHand ? "#ecebe7" : "#ea5236";
 
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2.5;
       ctx.strokeStyle = lineColor;
       ctx.beginPath();
       for (const [a, b] of HAND_CONNECTIONS) {
@@ -249,90 +270,34 @@ export default function HandTracker({ onStart }: { onStart?: () => void }) {
       }
       ctx.stroke();
       for (let j = 0; j < hand.length; j++) {
-        ctx.fillStyle = j === 4 || j === 8 ? "#fde047" : tipColor;
+        ctx.fillStyle = j === 8 ? "#ffffff" : tipColor;
         ctx.beginPath();
-        ctx.arc(hand[j].x * w, hand[j].y * h, j === 4 || j === 8 ? 7 : 4, 0, Math.PI * 2);
+        ctx.arc(hand[j].x * w, hand[j].y * h, j === 8 ? 7 : 3.5, 0, Math.PI * 2);
         ctx.fill();
       }
     }
   };
 
+  useImperativeHandle(ref, () => ({ start: () => void start(), stop }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => stop(), []);
 
   return (
-    <div
-      className="as-tracker fixed bottom-4 right-4 z-50 select-none"
-      data-status={status}
-      style={{ fontFamily: "var(--font-inter), sans-serif" }}
-    >
-      {status === "idle" && (
-        <button
-          onClick={start}
-          className="as-tracker-start px-4 py-2 rounded-full bg-purple-600/90 hover:bg-purple-500 text-white text-xs backdrop-blur shadow-lg shadow-purple-900/40 border border-white/10 cursor-pointer"
-        >
-          <span className="as-desktop-only">✋ Enable hand tracking</span>
-          {/* Phone: the button shares a row with the hint text. */}
-          <span className="as-phone-only">✋ Use camera</span>
+    <div className="as-tracker" data-status={status} data-visible={visible ? "true" : undefined} data-collapsed={collapsed ? "true" : undefined}>
+      <div className="as-tracker-video">
+        <video ref={videoRef} playsInline muted autoPlay />
+        <canvas ref={overlayRef} />
+      </div>
+      <div className="as-tracker-bar">
+        <button type="button" onClick={() => setCollapsed((c) => !c)} aria-label={collapsed ? "Show camera preview" : "Hide camera preview"}>
+          {collapsed ? <EyeIcon size={16} /> : <EyeSlashIcon size={16} />}
         </button>
-      )}
-
-      {status === "loading" && (
-        <div className="as-tracker-loading px-4 py-2 rounded-full bg-black/60 text-white text-xs backdrop-blur border border-white/10">
-          Loading…
-        </div>
-      )}
-
-      {status === "error" && (
-        <div className="as-tracker-error max-w-xs p-3 rounded-lg bg-red-900/80 text-white text-xs border border-red-700">
-          <div className="as-tracker-error-title mb-1 font-semibold">Hand tracking failed</div>
-          <div className="as-tracker-error-msg opacity-80">{error}</div>
-          <button
-            onClick={start}
-            className="as-tracker-retry mt-2 px-2 py-1 rounded bg-white/20 hover:bg-white/30 cursor-pointer"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      <div
-        className={`as-tracker-cam bg-black/60 backdrop-blur rounded-2xl border border-white/10 shadow-2xl overflow-hidden transition-all ${
-          status === "running" ? "block" : "hidden"
-        } ${collapsed ? "w-14" : "w-44"}`}
-      >
-        <div
-          className={`as-tracker-video relative aspect-[4/3] bg-black ${collapsed ? "hidden" : "block"}`}
-        >
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            autoPlay
-            className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-          />
-          <canvas
-            ref={overlayRef}
-            className="absolute inset-0 w-full h-full scale-x-[-1] pointer-events-none"
-          />
-        </div>
-        <div className="as-tracker-bar flex justify-between items-center px-2 py-1 text-[10px] text-white/70">
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="hover:text-white cursor-pointer"
-            aria-label={collapsed ? "Expand" : "Collapse"}
-          >
-            {collapsed ? "✋" : "—"}
-          </button>
-          {!collapsed && <span className="as-tracker-caption opacity-60">two-hand mode</span>}
-          <button
-            onClick={stop}
-            className="hover:text-red-300 cursor-pointer"
-            aria-label="Stop hand tracking"
-          >
-            ✕
-          </button>
-        </div>
+        <button type="button" onClick={stop} aria-label="Turn camera off">
+          <XIcon size={16} />
+        </button>
       </div>
     </div>
   );
-}
+});
+
+export default HandTracker;

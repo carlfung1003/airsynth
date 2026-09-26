@@ -1,10 +1,46 @@
 # AirSynth
 
-Gesture-driven piano & guitar for singing along. Right hand points at a chord on a radial reel; left hand makes a shape to pick how the chord plays. Songs come with their own chord palette and time-synced lyrics from LRClib so you can follow along.
+A music game you play with your hands. Right hand points at a chord on a ring, left hand makes a shape to pick how the chord plays, and the setlist gives you time-synced lyrics (LRClib) to sing along to. Everything also works by tap and keyboard.
 
 Live: [airsynth.carlfung.dev](https://airsynth.carlfung.dev)
 
-## Practice mode & two-hand commands
+## v3 (KAN-226): the game
+
+- **Screens**: title, setlist, play, results. The Start tap on the title is also the audio unlock (see below).
+- **Perform mode**: the song runs at tempo after a one-bar count-in. Every chord entry is one bar (the encoder convention), so each bar has a target downbeat on the song clock. Changing to the right chord within ±130 ms is Perfect, ±260 ms Great, ±420 ms Good (earlier than that still counts as Good once held), otherwise Miss. Repeated bars just need you to keep holding. Streak multiplier x1 to x4, accuracy, grade S to D, local bests per song. Speed 70 / 85 / 100% and a "to first chorus" length for quick runs. Hand-tracked input is backdated 100 ms for camera latency.
+- **Practice mode**: the old song mode. The song waits for you, with section loop, speed, transpose and section jumps.
+- **Free play**: seven diatonic chords in any key, presets and custom key.
+- **Chord lane**: bars slide toward a hit line (one rAF writes a transform, no React renders per frame); repeats join the bar before them; judged bars keep their grade colour.
+- Game logic is pure and tested: `lib/game.ts`, `npx tsx tests/game.test.ts`.
+
+### Mobile audio fixes
+
+Sound did not work on phones. Four causes, all in `lib/audio.ts`:
+
+1. **Audio started outside a gesture.** The camera path created the AudioContext after awaiting MediaPipe and `getUserMedia`, and iOS leaves a context made there suspended (its `resume()` promise never settles, so the app sat on "Loading piano samples" forever). Now `unlock()` runs synchronously inside the Start tap: create/resume the context, start a one-sample silent buffer.
+2. **The ringer switch.** iOS mutes Web Audio on silent unless the page claims the playback audio session: `navigator.audioSession.type = "playback"` (iOS 17+), or a looping silent `<audio>` element on older iOS.
+3. **No recovery after interruptions.** Calls, Siri and app switches leave the context "interrupted". Any later tap (touchend / click / keydown / pointerup, the events WebKit accepts) resumes it, and the red tally lamp in the top bar goes dark when a tap is needed.
+4. **One failure wedged the engine.** smplr's AudioWorklet reverb could reject `addModule()` and the cached rejected promise killed audio for the session. The reverb is now a native ConvolverNode with a generated impulse response; loads have a timeout and can be retried from the lamp.
+
+Also: smplr's `Reverb.getParam()` returns `preDelay` for every name, so the old wet/dry settings never landed. The new signal path is instruments, reverb send, glue compressor, limiter, master, with a native analyser for the visuals. The guitar loads on demand instead of at startup (less to download and decode on a phone).
+
+### Art
+
+Plates are generated with Nano Banana Pro on Vertex AI (`~/scripts/gcp-media/gemini-image.sh`) from one style brief ("a late-night recording session": 35mm, low-key tungsten light, one note of red), QA'd by eye, and processed by `scripts/process-art.mjs` into `public/art/`. Prompts, attempts and rejections are in `assets/art/art_manifest.json`; WebP masters in `assets/art/masters/` (raw PNGs are gitignored). Bump `ART_VERSION` in `lib/art.ts` when a plate changes.
+
+### Checks
+
+```bash
+npx tsx tests/game.test.ts                                   # judging, scoring, charts
+PLAYWRIGHT_MODULE=~/ai-journey/node_modules/playwright \
+  npx tsx tests/e2e-perform.ts http://localhost:3000         # plays a Perform run, expects S
+  npx tsx tests/e2e-perform.ts --sloppy                      # late + skipped changes
+  npx tsx tests/e2e-mobile-audio.ts                          # iPhone WebKit: unlock, load, sound
+```
+
+## Earlier versions
+
+### Practice mode & two-hand commands
 
 - **Tempo slider** (50%–150%) scales the song's authored BPM and any loaded backing track in lock-step — slow Marry You to 70% to learn the changes, then ramp back up
 - **Transpose** (±6 semitones) shifts the active song's chord palette + engine root live so singers can drop a song into their vocal range without rewriting source data. The header readout shows the original key, the effective key, and the offset. Sharps stay sharps (F# / C# / G#) for chord-chart consistency. Resets to 0 on song change.
@@ -20,7 +56,7 @@ Live: [airsynth.carlfung.dev](https://airsynth.carlfung.dev)
   - A bottom-center progress bar fills while the gesture is held; single-hand pattern selection is suppressed during the hold so a stray pattern doesn't switch
 - **Backing track** — drop a drums+bass+pad stem at `/public/backing-tracks/<song-id>.mp3` and set `backingTrack: { url, sourceBpm }` on the `Song` entry. The engine stretches the buffer with `playbackRate` so it stays glued to the live chord loop even when you change tempo. A "Band" volume slider appears in the header whenever the active song has one.
 
-## What's new in this version
+### v2
 
 ### Song mode
 - 8 pop songs encoded as phrase-aligned chord arrays — each LRC lyric line maps 1:1 to a phrase, so chord markers land on the right words instead of being spread evenly across the bar

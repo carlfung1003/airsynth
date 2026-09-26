@@ -1,10 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Archivo, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+// One family for the whole game. Archivo's width axis does the work a second
+// display face would: expanded for the logotype and chord names, normal for
+// UI text, condensed for the HUD. JetBrains Mono only for tempo/key readouts.
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+  axes: ["wdth"],
 });
 
 const mono = JetBrains_Mono({
@@ -12,36 +16,36 @@ const mono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
+const description =
+  "A music game you play with your hands. Point at chords, shape a pattern with the other hand, and sing along to the setlist.";
+
 export const metadata: Metadata = {
-  title: "AirSynth — play piano with your hands",
-  description:
-    "A gesture-driven piano in the browser. Right hand points at a chord; left hand makes a shape (fist · peace · thumbs up) to pick how the chord plays. No instrument required.",
+  title: "AirSynth",
+  description,
   metadataBase: new URL("https://airsynth.carlfung.dev"),
   openGraph: {
-    title: "AirSynth — play piano with your hands",
-    description:
-      "A gesture-driven piano in the browser. Right hand points at a chord; left hand makes a shape to pick the pattern.",
-    images: [{ url: "/images/hero.png", width: 1536, height: 1024 }],
+    title: "AirSynth",
+    description,
+    images: [{ url: "/art/og.jpg", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AirSynth — play piano with your hands",
-    description:
-      "A gesture-driven piano in the browser. Right hand points at a chord; left hand makes a shape to pick the pattern.",
-    images: ["/images/hero.png"],
+    title: "AirSynth",
+    description,
+    images: ["/art/og.jpg"],
   },
-  icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎹</text></svg>",
-  },
+  icons: { icon: "/icon.svg" },
+  appleWebApp: { capable: true, title: "AirSynth", statusBarStyle: "black-translucent" },
 };
 
 // Mobile Safari (KAN-219): viewport-fit=cover exposes env(safe-area-inset-*).
-// Pinch zoom stays on — double-tap zoom is handled with touch-action in globals.css.
+// Pinch zoom stays on; double-tap zoom is handled with touch-action in CSS.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#0b0c0e",
 };
 
 export default function RootLayout({
@@ -50,13 +54,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${mono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-[#0f172a] text-white overflow-x-hidden">
-        {children}
-      </body>
+    <html lang="en" className={`${archivo.variable} ${mono.variable} h-full antialiased`}>
+      <body className="min-h-full">{children}</body>
     </html>
   );
 }

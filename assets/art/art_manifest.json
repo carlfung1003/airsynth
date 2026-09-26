@@ -1,0 +1,351 @@
+{
+  "project": "AirSynth v3",
+  "ticket": "KAN-226",
+  "generated": "2026-09-26",
+  "generator": {
+    "script": "~/scripts/gcp-media/gemini-image.sh \"<prompt>\" <out.png> <aspect> 2K",
+    "platform": "Vertex AI",
+    "model": "gemini-3-pro-image",
+    "location": "global",
+    "ledgerTag": "airsynth-v3"
+  },
+  "styleBlock": "Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+  "coverPrefix": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object:",
+  "pipeline": "raw PNGs (gitignored) -> assets/art/masters/<name>.webp q92 -> node scripts/process-art.mjs -> public/art/**. Per-plate `grade` below is written by process-art.mjs from its GRADES table.",
+  "plates": [
+    {
+      "name": "stage-wide",
+      "prompt": "Wide interior of a small wood-panelled recording studio live room late at night. A black grand piano with its lid propped open sits right of centre, seen at a three-quarter angle from the keyboard end, its lid hinged along the straight side and held up by the long prop stick, a plain bench at the keyboard; it is lit by one small practice lamp. The piano is unbranded, with no maker's name, crest or decal. A single small round red tally lamp, unlettered, glows softly and out of focus on the far wall, a dim blurred red disc rather than a bright light. Acoustic diffuser panels, a microphone on a boom stand near the piano, a coiled cable on the floor. The left 45% of the frame is the same room falling away gradually into soft darkness, a smooth fall-off of the lamplight with no door frame, wall edge or foreground object, empty space for typography. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "16:9",
+      "size": "2K",
+      "attempts": 3,
+      "chosenAttempt": 2,
+      "notes": "a1: REJECT: left third is a hard-edged black foreground slab (door frame), not a soft fall-off; tally lamp a sharp bright disc; piano malformed on zoom (lid hinged on wrong side, dolly-like pedal frame on a caster, bench along the long side). | a2: CHOSEN + RETOUCHED: composition on brief (soft out-of-focus foreground fall-off on the left ~40%, blurred red tally disc, correct three-quarter grand piano with bench at the keyboard, boom mic, coiled cable). Faint gold 'STEINWAY & SONS'-style wordmark + lyre on the fallboard removed with a tone-matched clone patch (RETOUCH table in process-art.mjs); verified invisible at 1:1 in the 2400px derivative. | a3: REJECT: fallboard clean, but the room is evenly/brightly lit (light oak, daytime look) rather than low-key tungsten, and the left third is again a hard-edged dark slab. | Processing: clone-patch retouch with tone match (see processing.retouch).",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Wide interior of a small wood-panelled recording studio live room late at night. A black grand piano with its lid propped open sits right of centre, lit by one small practice lamp. A single round red tally lamp, unlettered, glows softly out of focus on the far wall. Acoustic diffuser panels, a microphone on a boom stand near the piano, a coiled cable on the floor. The left 45% of the frame falls away into soft darkness, empty space for typography. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        },
+        {
+          "attempt": 3,
+          "prompt": "Wide interior of a small wood-panelled recording studio live room late at night. A black grand piano with its lid propped open sits right of centre, seen at a three-quarter angle from the keyboard end, its lid hinged along the straight side and held up by the long prop stick, a plain bench at the keyboard; it is lit by one small practice lamp. The piano's fallboard is smooth, featureless black lacquer, refinished plain with no lettering, emblem or decal, and the keyboard end sits partly in shadow. A single small round red tally lamp, unlettered, glows softly and out of focus on the far wall, a dim blurred red disc rather than a bright light. Acoustic diffuser panels, a microphone on a boom stand near the piano, a coiled cable on the floor. The left 45% of the frame is the same room falling away gradually into soft darkness, a smooth fall-off of the lamplight with no door frame, wall edge or foreground object, empty space for typography. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "retouch": [
+          {
+            "rect": [
+              1610,
+              858,
+              120,
+              58
+            ],
+            "from": [
+              -150,
+              -10
+            ],
+            "feather": 14,
+            "match": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "stage-tall",
+      "prompt": "Vertical photograph of the same small wood-panelled studio at night: the open lid and keyboard of a black grand piano fill the lower half, lamplight from a small brass practice lamp with a warm amber shade pooling across the keys, a small round unlettered red tally lamp, a soft blurred red disc on the wall, small and out of focus in the upper right, the upper 40% dark and quiet, empty space for typography. The piano's fallboard is smooth, featureless black lacquer, refinished plain with no lettering, emblem or decal. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "9:16",
+      "size": "2K",
+      "attempts": 3,
+      "chosenAttempt": 3,
+      "notes": "a1: REJECT: faint maker's lyre crest and wordmark on the fallboard (Steinway-like); otherwise on-brief composition. | a2: REJECT: off-palette green banker's lamp shade; faint 'YAMAHA' wordmark on the fallboard; tally lamp became a box light on a shelf, not round. | a3: ACCEPT: fallboard clean (zoomed), amber banker's lamp on palette, round red tally lamp upper right (a little crisper/brighter than 'out of focus' asked), upper 40% dark. Black-key grouping verified 2-3-2-3 at full res.",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Vertical photograph of the same small wood-panelled studio at night: the open lid and keyboard of a black grand piano fill the lower half, lamplight pooling across the keys, a round unlettered red tally lamp small and out of focus in the upper right, the upper 40% dark and quiet, empty space for typography. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        },
+        {
+          "attempt": 2,
+          "prompt": "Vertical photograph of the same small wood-panelled studio at night: the open lid and keyboard of a black grand piano fill the lower half, lamplight pooling across the keys, a round unlettered red tally lamp small and out of focus in the upper right, the upper 40% dark and quiet, empty space for typography. The piano is unbranded: its fallboard is plain unmarked black lacquer with no maker's name, crest, emblem or decal anywhere on the instrument. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ]
+    },
+    {
+      "name": "keys",
+      "prompt": "Low-angle close-up along the keyboard of a black grand piano, the camera at key height at the treble end looking along the keys, the white keys catching warm lamplight and falling off into shadow. Above the keys the fallboard is a smooth, featureless strip of polished black lacquer, refinished plain with no lettering, emblem, panel or badge, and it reflects a single faint red point of light. Most of the frame is in darkness: the room behind is black, with no visible walls. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "16:9",
+      "size": "2K",
+      "attempts": 3,
+      "chosenAttempt": 3,
+      "notes": "a1: REJECT: 'YAMAHA' wordmark on the fallboard. | a2: REJECT: no wordmark, but a rectangular badge/display-like panel with a red LED on the fallboard; left background is a mid-grey lit wall, not 'most of the frame in darkness'. | a3: BEST OF 3, RETOUCHED: ideal mood (black room, lamplit keys, red key-slip felt, single red point on the fallboard) but very faint pseudo-lettering on the fallboard left of the red point (visible only with contrast boost). Max attempts reached -> clone-patch retouch in process-art.mjs (RETOUCH table) applied when writing the master; red point preserved. | Processing: clone-patch retouch (see processing.retouch). Black-key grouping not countable at this steep perspective / shallow focus; nothing visibly irregular.",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Low-angle close-up along the keyboard of a black grand piano, the white keys catching warm lamplight and falling off into shadow, the fallboard's polished black lacquer reflecting a faint red point of light, most of the frame in darkness. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        },
+        {
+          "attempt": 2,
+          "prompt": "Low-angle close-up along the keyboard of a black grand piano, the white keys catching warm lamplight and falling off into shadow, the fallboard's polished black lacquer reflecting a faint red point of light, most of the frame in darkness. The piano is unbranded: its fallboard is plain unmarked black lacquer with no maker's name, crest, emblem or decal anywhere on the instrument. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "retouch": [
+          {
+            "rect": [
+              1205,
+              500,
+              305,
+              165
+            ],
+            "from": [
+              -330,
+              0
+            ],
+            "feather": 22,
+            "keep": [
+              [
+                1462,
+                541,
+                18
+              ]
+            ],
+            "clipBelow": [
+              1250,
+              666,
+              1600,
+              560
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "cover-love-yourself",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a closed black umbrella lying on its side, beaded with raindrops, plain unbranded fabric and a plain black handle with no labels or tags. The felt covers the whole lower part of the picture from the left edge to the right edge and past the bottom edge, and fades softly into the black background at a dark horizon about 35% down from the top of the frame; the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 3,
+      "chosenAttempt": 3,
+      "notes": "a1: REJECT: generator returned a 2x2 collage of four objects (umbrella, guitar strap, notebooks, harmonica) - 'consistent series' wording read as a grid; umbrella also carried a small red label. | a2: CANDIDATE: single unbranded compact umbrella beaded with raindrops, no text - but felt rendered as a plinth with visible front edge/sides despite the framing clause. | a3: ACCEPT: single compact umbrella beaded with raindrops, felt runs off both sides; handle zoomed - blank button, no label (red glint on the end cap is a reflection). Residual: dark falloff band along the bottom ~15%.",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a closed black umbrella lying on its side, beaded with raindrops. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        },
+        {
+          "attempt": 2,
+          "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a closed black umbrella lying on its side, beaded with raindrops, plain unbranded fabric and a plain black handle with no labels or tags. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "inset": 0.02
+      }
+    },
+    {
+      "name": "cover-sorry",
+      "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a folded blank cream letter, sealed with a small dark red wax seal, nothing written on it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 1,
+      "chosenAttempt": 1,
+      "notes": "a1: ACCEPT candidate: blank cream envelope-style folded letter, plain wax seal (zoomed: no letters/monogram), key light upper left, red bounce right.",
+      "processing": {
+        "inset": 0.02
+      }
+    },
+    {
+      "name": "cover-count-on-me",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a vintage brass ship's compass with its hinged lid open; its compass card is a plain star rose with fine tick lines only, no letters, no numbers, no degree markings. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 2,
+      "chosenAttempt": 2,
+      "notes": "a1: REJECT: compass card has pseudo-lettering ('N', 'DEI', 'OW') and degree numbers. | a2: ACCEPT: plain star rose + tick marks, full felt, compass small in frame. Residual: two micro pseudo-numerals on the bezel ring visible only at 5x zoom (~12px tall in the 2048 master, sub-pixel in the 720/360 covers). | Grade: warmed slightly (see processing.grade).",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a vintage brass ship's compass with its hinged lid open. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "inset": 0.02,
+        "grade": {
+          "linear": {
+            "a": [
+              1.06,
+              1,
+              0.95
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "cover-just-the-way-you-are",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a small round vintage hand mirror with a short turned brass handle, lying face up; its dark glass reflects the black room and one thin, bright crescent of warm lamplight curving along one edge of the glass. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 3,
+      "chosenAttempt": 3,
+      "notes": "a1: REJECT: reads as a round compact/lens filter, not a hand mirror (no handle; a stray stub on the right rim looks malformed). Crescent reflection itself is good. | a2: CANDIDATE: now clearly a hand mirror with a turned handle on full felt, but the glass shows no crescent of warm light (reads close to a magnifying glass). | a3: ACCEPT: hand mirror with turned handle, dark glass with one thin crescent of warm lamplight along its edge (zoomed: clean), full felt, horizon ~36%. | Grade: lifted ~25% and warmed (multiply only) to match the series (see processing.grade).",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a small round vintage hand mirror lying face up, its glass reflecting only darkness and a thin crescent of warm light. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        },
+        {
+          "attempt": 2,
+          "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a small round vintage hand mirror with a short turned brass handle, lying face up, its glass reflecting only darkness and a thin crescent of warm light. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "inset": 0.02,
+        "grade": {
+          "linear": {
+            "a": [
+              1.3,
+              1.22,
+              1.14
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "cover-marry-you",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: an open vintage ring box covered in worn charcoal-grey velvet, holding a plain gold band, a few scattered small circles of pale cream paper confetti on the felt. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 2,
+      "chosenAttempt": 2,
+      "notes": "a1: REJECT (series style): red velvet box plus nine saturated red confetti discs - far more than 'one small note of signal red'; confetti reads as flat graphic dots. Ring/box geometry fine. | a2: ACCEPT: worn charcoal velvet box, plain gold band (zoomed: clean, blank satin lid), five pale cream confetti circles, full felt; red limited to the right-edge bounce.",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: an open vintage velvet ring box holding a plain gold band, a few scattered circles of paper confetti on the felt. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "inset": 0.02
+      }
+    },
+    {
+      "name": "cover-perfect",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a pair of worn black patent-leather dancing shoes lying directly on the felt, one standing upright, the other tipped over on its side. The felt covers the whole lower part of the picture from the left edge to the right edge and past the bottom edge, and fades softly into the black background at a dark horizon about 35% down from the top of the frame; the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 3,
+      "chosenAttempt": 3,
+      "notes": "a1: REJECT (series style): felt shown as a small plinth with a visible front edge and sides floating in black, lower camera than the rest of the series. | a2: CANDIDATE: shoes good on zoom (one upright, one tipped showing sole, plausible heels), full felt - but a wooden rail/cushion runs across the horizon (reads as a pool table). | a3: ACCEPT (best of 3): one shoe upright, one tipped showing its sole (zoomed: well formed; a small blank red heel tab, no text). Residual: dark falloff band along the bottom ~12% (front of the felt) and thin simulated film edge (removed by the 2% inset).",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a pair of worn black patent-leather dancing shoes, one standing, one tipped on its side. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        },
+        {
+          "attempt": 2,
+          "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a pair of worn black patent-leather dancing shoes lying directly on the felt, one standing upright, the other tipped over on its side. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "inset": 0.02
+      }
+    },
+    {
+      "name": "cover-someone-like-you",
+      "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a single dried red rose lying on the felt, its petals darkened and curling at the edges. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 1,
+      "chosenAttempt": 1,
+      "notes": "a1: ACCEPT: dried rose, darkened curling petals, the rose is the plate's red note. Generator added a simulated film-rebate edge (~9-12px dark strips with notches, left/right) - removed by the uniform 2% cover inset in process-art.mjs. Short stem (flower head only) - acceptable.",
+      "processing": {
+        "inset": 0.02
+      }
+    },
+    {
+      "name": "cover-let-it-be",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a single white pillar candle in a simple brass holder, its small flame perfectly still. The felt covers the whole lower part of the picture from the left edge to the right edge and past the bottom edge, and fades softly into the black background at a dark horizon about 35% down from the top of the frame; the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 3,
+      "chosenAttempt": 3,
+      "notes": "a1: RUNNER-UP: on-brief, flame still, red bounce at right edge, no text. Note: slightly lower camera than others (front table edge visible). Regenerating once with the explicit framing clause for series consistency; keep a1 if a2 is not better. | a2: CANDIDATE: horizon closer to the series (46%) but still a visible front table edge; flatter light than a1 (less raking). | a3: ACCEPT: pillar candle in a brass chamberstick, flame still, felt runs off bottom and sides (the only candle attempt without a table edge); zoomed clean.",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a single white pillar candle in a simple brass holder, its small flame perfectly still. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        },
+        {
+          "attempt": 2,
+          "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a single white pillar candle in a simple brass holder, its small flame perfectly still. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "inset": 0.02
+      }
+    },
+    {
+      "name": "cover-k-ballad-lick",
+      "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a short section of an antique piano keyboard, three yellowed ivory keys, with a few pale cherry-blossom petals resting on them. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 1,
+      "chosenAttempt": 1,
+      "notes": "a1: ACCEPT: antique keyboard section with pale cherry-blossom petals, zoomed - key geometry plausible (4 white + 3 black in a correct F#-G#-A# grouping; brief said three keys, minor deviation that still reads right). No text.",
+      "processing": {
+        "inset": 0.02
+      }
+    },
+    {
+      "name": "cover-free-play",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a vintage walnut pyramid metronome with its pendulum caught mid-swing; the tempo scale behind the pendulum is a plain brass strip with fine tick marks only, no numbers or letters. The far edge of the felt is a straight horizontal line about 38% down from the top of the frame, the felt tabletop runs off the bottom and both side edges of the frame with no front table edge visible, and the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 2,
+      "chosenAttempt": 2,
+      "notes": "a1: REJECT: tempo scale carries legible numbers (zoomed); low camera with the table's front edge visible - framing outlier in the series. | a2: ACCEPT: tempo scale tick marks only (zoomed, no numbers), pendulum mid-swing, felt runs off the bottom. Lower camera than most (horizon ~53%); felt reads cooler/greyer -> graded in process-art.mjs. Thin simulated film edge removed by the 2% inset. | Grade: darkened ~15% and warmed to match the series felt tone (see processing.grade).",
+      "otherAttemptPrompts": [
+        {
+          "attempt": 1,
+          "prompt": "Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a vintage walnut pyramid metronome with its pendulum caught mid-swing. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast."
+        }
+      ],
+      "processing": {
+        "inset": 0.02,
+        "grade": {
+          "linear": {
+            "a": [
+              0.87,
+              0.84,
+              0.81
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "gestures-sheet",
+      "prompt": "Instruction-manual pictogram sheet: eight hand-shape line drawings arranged in an exact grid of 4 columns by 2 rows, equal cells, each hand centred in its cell with generous margin, on a flat pure black background. Each drawing is one human hand seen from the palm side, fingers pointing up, drawn as clean continuous off-white line art of one even medium stroke weight, like a technical illustration in a musical-instrument manual. Anatomically correct, exactly five digits on every hand, no shading, no fill, no colour, no text, no numbers, no labels, no cell borders. Row 1, left to right: (1) open hand with all five fingers spread apart; (2) closed fist with the thumb wrapped across the front of the fingers; (3) only the index finger pointing straight up, the other fingers curled, thumb folded over them; (4) peace sign, index and middle fingers up in a V, ring and little finger curled, thumb folded over them. Row 2, left to right: (5) index, middle and ring fingers up, little finger curled, thumb folded over it; (6) thumbs up, a fist with the thumb pointing straight up; (7) rock sign, index and little finger up, middle and ring fingers curled, thumb folded across them; (8) hang-loose sign, thumb and little finger fully extended outward, the other three fingers curled into the palm.",
+      "aspect": "16:9",
+      "size": "2K",
+      "attempts": 1,
+      "chosenAttempt": 1,
+      "notes": "a1: ACCEPT: all 8 cells verified at full resolution in order - (1) open 5 digits spread, (2) fist thumb across fingers, (3) index up + 3 curled + thumb over, (4) V + ring/little curled + thumb over, (5) index/middle/ring up + little curled + thumb over it, (6) thumbs-up (drawn side-on) 4 curled + thumb up, (7) rock index+little up, middle/ring curled, thumb across, (8) hang-loose thumb+little out, 3 curled; exactly 5 digits on each. Deviation: generator drew thin cell-border rules despite 'no cell borders' - process-art.mjs detects them (columns/rows >60% ink), uses them as the grid and erases them (+-4px), so the slices are clean. Mixed handedness across cells (cells 3/4 read as left hand) - acceptable for pictograms. | Sliced by process-art.mjs: grid taken from the detected border rules, rules erased, each drawing centred in a 706px square (largest drawing 588px + 10% pad) so all eight share one scale, then 320px with alpha = line luminance and RGB = #EDEBE6. Order: open, fist, index, peace, three, thumb, rock, hangloose."
+    }
+  ]
+}
