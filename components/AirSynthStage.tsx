@@ -49,6 +49,7 @@ import {
   globalChordPosition,
   mapLinesToChordPositions,
 } from "@/lib/lyrics";
+import { hitTestPerimeterGrid, layoutPerimeterGrid, type PerimeterGrid } from "@/lib/reel-grid";
 
 const SCALE_TYPES: ScaleType[] = ["major", "minor", "dorian", "mixolydian"];
 // Fallback when the header hasn't been measured yet (first paint). The
@@ -73,6 +74,10 @@ type ReelGeometry = {
   squash?: number;
   itemR?: number;
   itemScale?: number;
+  // Phone, big palettes on short screens: the ring wraps onto the edge of a
+  // grid instead of shrinking badges below 44px (lib/reel-grid.ts). When set,
+  // badges sit in grid.cells and hit-testing uses the cells, not angles.
+  grid?: PerimeterGrid;
 };
 
 function computeReelGeometry(vp: Viewport, side: "left" | "right"): ReelGeometry {
@@ -117,7 +122,7 @@ const DENSE_PALETTE = 9;
 function estimatePhoneBadge(items: ChordSlot[]): { w: number; h: number } {
   const dense = items.length >= DENSE_PALETTE;
   let w = dense ? 52 : 64;
-  let h = dense ? 40 : 44;
+  let h = 44; // 44px finger target at full size, dense or not
   for (const slot of items) {
     const { main, sub } = compactBadgeText(slot);
     w = Math.max(w, (dense ? 16 : 20) + main.length * (dense ? 9 : 10.2), sub ? 20 + sub.length * 6 : 0);
@@ -129,8 +134,10 @@ function estimatePhoneBadge(items: ChordSlot[]): { w: number; h: number } {
 // Fit the ring inside the measured reel slot: badges stay inside the slot
 // and never overlap their neighbours. The ring may flatten into an ellipse
 // (never taller than wide, at most 1 : 0.6) to use a wide, short cell; if
-// that still isn't room enough, badges shrink (itemScale) rather than spill
-// onto other panels.
+// that still isn't room enough, the ring wraps onto a grid's edge (big
+// palettes on short phones) so badges keep a 44px finger size. Only if even
+// that can't fit do badges shrink (itemScale) rather than spill onto other
+// panels.
 function computePhoneReelGeometry(
   slot: SlotRect,
   n: number,
@@ -165,7 +172,14 @@ function computePhoneReelGeometry(
   let itemScale = fitScale(itemR);
   if (itemScale < 1) {
     itemR = rMax;
-    itemScale = Math.max(0.4, fitScale(itemR));
+    itemScale = fitScale(itemR);
+  }
+  if (itemScale < 1) {
+    const grid = layoutPerimeterGrid(slot, n, badge);
+    if (grid) {
+      return { cx, cy, outer: halfW, dead: Math.min(grid.hole.w, grid.hole.h) / 2, grid, itemScale: 1 };
+    }
+    itemScale = Math.max(0.4, itemScale);
   }
   return { cx, cy, outer: outerX, dead: outerX * DEAD_ZONE_RATIO, squash, itemR, itemScale };
 }
@@ -632,6 +646,7 @@ export default function AirSynthStage() {
         geo: ReelGeometry,
         slices: number,
       ): number | null => {
+        if (geo.grid) return hitTestPerimeterGrid(x, y, geo.grid, slices);
         const dx = x - geo.cx;
         // Phone ellipse: stretch dy back to a circle (squash is 1 on desktop).
         const dy = (y - geo.cy) * (geo.squash ?? 1);
@@ -1609,10 +1624,38 @@ function RadialReel<T>({
   const accentText =
     accent === "purple" ? "text-purple-300/80" : "text-cyan-300/80";
   const squash = geo.squash ?? 1;
+  const grid = geo.grid;
 
   return (
     <>
-      {showRings && (
+      {showRings && grid && (
+        <>
+          {/* Grid layout: outer frame + the interior dead zone */}
+          <div
+            className="fixed z-10 rounded-3xl pointer-events-none"
+            style={{
+              left: grid.area.x,
+              top: grid.area.y,
+              width: grid.area.w,
+              height: grid.area.h,
+              border: "1px dashed rgba(255,255,255,0.10)",
+              boxShadow: handPresent ? `0 0 60px ${accentColor}` : undefined,
+              transition: "box-shadow 200ms ease",
+            }}
+          />
+          <div
+            className="fixed z-10 rounded-2xl pointer-events-none"
+            style={{
+              left: grid.hole.x + 6,
+              top: grid.hole.y + 6,
+              width: grid.hole.w - 12,
+              height: grid.hole.h - 12,
+              border: "1px dashed rgba(255,255,255,0.08)",
+            }}
+          />
+        </>
+      )}
+      {showRings && !grid && (
         <>
           {/* Outer ring */}
           <div
@@ -1654,9 +1697,10 @@ function RadialReel<T>({
       </div>
       {/* Items positioned around the ring */}
       {items.map((item, i) => {
+        const cell = grid?.cells[i];
         const pos = itemPosition(i, items.length, geo.itemR ?? geo.outer * ITEM_RADIUS_RATIO);
-        const dx = pos.dx;
-        const dy = pos.dy / squash;
+        const left = cell ? cell.x + cell.w / 2 : geo.cx + pos.dx;
+        const top = cell ? cell.y + cell.h / 2 : geo.cy + pos.dy / squash;
         const active = i === activeIndex && handPresent;
         const scale = (geo.itemScale ?? 1) * (active ? 1.08 : 1);
         return (
@@ -1664,8 +1708,8 @@ function RadialReel<T>({
             key={i}
             className="as-reel-item fixed z-20 pointer-events-none transition-transform duration-200"
             style={{
-              left: geo.cx + dx,
-              top: geo.cy + dy,
+              left,
+              top,
               transform: `translate(-50%, -50%) scale(${scale})`,
             }}
           >

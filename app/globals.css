@@ -324,10 +324,11 @@ input[type="range"] {
     line-height: 13px;
     margin-top: 1px;
   }
-  /* 9+ chord palettes (must match estimatePhoneBadge). */
+  /* 9+ chord palettes (must match estimatePhoneBadge). Narrower, but still
+     a 44px finger target: big palettes wrap onto a grid instead of shrinking. */
   .as-chord-dense {
     min-width: 52px !important;
-    min-height: 40px;
+    min-height: 44px;
     padding: 4px 7px;
     border-radius: 12px;
   }
