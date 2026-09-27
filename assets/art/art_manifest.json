@@ -346,6 +346,18 @@
       "attempts": 1,
       "chosenAttempt": 1,
       "notes": "a1: ACCEPT: all 8 cells verified at full resolution in order - (1) open 5 digits spread, (2) fist thumb across fingers, (3) index up + 3 curled + thumb over, (4) V + ring/little curled + thumb over, (5) index/middle/ring up + little curled + thumb over it, (6) thumbs-up (drawn side-on) 4 curled + thumb up, (7) rock index+little up, middle/ring curled, thumb across, (8) hang-loose thumb+little out, 3 curled; exactly 5 digits on each. Deviation: generator drew thin cell-border rules despite 'no cell borders' - process-art.mjs detects them (columns/rows >60% ink), uses them as the grid and erases them (+-4px), so the slices are clean. Mixed handedness across cells (cells 3/4 read as left hand) - acceptable for pictograms. | Sliced by process-art.mjs: grid taken from the detected border rules, rules erased, each drawing centred in a 706px square (largest drawing 588px + 10% pad) so all eight share one scale, then 320px with alpha = line luminance and RGB = #EDEBE6. Order: open, fist, index, peace, three, thumb, rock, hangloose."
+    },
+    {
+      "name": "cover-warm-up",
+      "prompt": "A single photograph of one object only, not a grid, not a collage, not a diptych. Editorial still-life photograph from a consistent series: one object placed slightly below centre on a dark charcoal wool-felt tabletop against a seamless black background, one hard warm tungsten key light from the upper left raking across the felt texture, a faint red bounce light from the right edge, generous empty space above the object, the same camera height and lens for every image in the series. The object: a single polished steel tuning fork lying on its side, its two tines catching the light. The felt covers the whole lower part of the picture from the left edge to the right edge and past the bottom edge, and fades softly into the black background at a dark horizon about 35% down from the top of the frame; the object is small in the frame with wide empty felt around it. Shot on 35mm film, Kodak Portra 800 pushed one stop, fine natural grain, low-key lighting from a single warm tungsten source, deep blacks that keep shadow detail, muted desaturated colour of graphite, warm amber and one small note of signal red, shallow depth of field, editorial music-magazine photography, quiet and restrained, photographed not rendered. No text, no letters, no numbers, no logos, no signage, no watermark, no people, no hands, no glow effects, no lens flare, no sparkles, no bokeh balls, no neon, no purple, no blue cast.",
+      "aspect": "1:1",
+      "size": "2K",
+      "attempts": 1,
+      "chosenAttempt": 1,
+      "notes": "KAN-229. Added for the guided Warm-up song. Same series prompt as the other covers; tuning fork anatomy checked (two tines, stem, ball end), no lettering.",
+      "processing": {
+        "inset": 0.02
+      }
     }
   ]
 }

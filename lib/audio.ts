@@ -2,7 +2,8 @@
 
 import * as Tone from "tone";
 import { Note } from "tonal";
-import { ElectricPiano, Soundfont, SplendidGrandPiano, Versilian } from "smplr";
+import { DrumMachine, ElectricPiano, Soundfont, SplendidGrandPiano, Versilian } from "smplr";
+import { GROOVES, hitsAt, type Groove } from "./grooves";
 import {
   FILLERS,
   FillerPattern,
@@ -15,6 +16,7 @@ import {
 } from "./theory";
 
 type SmplrSoundfont = ReturnType<typeof Soundfont>;
+type SmplrDrums = ReturnType<typeof DrumMachine>;
 type SmplrAnyPiano =
   | ReturnType<typeof SplendidGrandPiano>
   | SmplrSoundfont
@@ -162,6 +164,21 @@ class AudioEngine {
   private guitarLoaded = false;
 
   private instrument: Instrument = "piano";
+
+  // The band: an LM-2 (LinnDrum) kit, loaded in the background after the
+  // first instrument. Never reported through `status` — a run shouldn't wait
+  // for the drums, it just starts without them.
+  private drums: SmplrDrums | null = null;
+  private drumsLoad: Promise<void> | null = null;
+  private drumsLoaded = false;
+  private drumsEnabled = true;
+  private groove: Groove = GROOVES.pop;
+  private drumLoop: Tone.Loop | null = null;
+  // Perform: 16th steps of count-in before bar 0, and bars that get a crash.
+  private drumOffset16 = 0;
+  private sectionBars = new Set<number>();
+  private performing = false;
+  private drumGain: GainNode | null = null;
 
   // Sounding voices per instrument, so a chord change can release the last
   // chord the way a pianist lifts the pedal.
@@ -396,6 +413,14 @@ class AudioEngine {
     this.clickGain.gain.value = 0.5;
     this.clickGain.connect(this.bus);
 
+    this.drumGain = ctx.createGain();
+    this.drumGain.gain.value = 0.5;
+    const drumSend = ctx.createGain();
+    drumSend.gain.value = 0.08;
+    this.drumGain.connect(this.bus);
+    this.drumGain.connect(drumSend);
+    drumSend.connect(this.reverbIn);
+
     this.droneGain = ctx.createGain();
     this.droneGain.gain.value = 1;
     const droneLp = ctx.createBiquadFilter();
@@ -427,6 +452,7 @@ class AudioEngine {
     this.loadingPromise = (async () => {
       await this.ensureInstrumentLoaded(this.instrument);
       this.ready = true;
+      void this.loadDrums().catch(() => {});
     })().catch((err: unknown) => {
       // Let the next call retry instead of returning this rejection forever.
       this.loadingPromise = null;
@@ -497,6 +523,38 @@ class AudioEngine {
       this.guitarLoad = null;
     });
     return this.guitarLoad;
+  }
+
+  private loadDrums(): Promise<void> {
+    if (this.drumsLoaded) return Promise.resolve();
+    if (this.drumsLoad) return this.drumsLoad;
+    const ctx = this.ensureContext();
+    const drums = DrumMachine(ctx, { instrument: "LM-2", destination: this.drumGain!, volume: 100 });
+    this.drums = drums;
+    this.drumsLoad = withTimeout(drums.load, LOAD_TIMEOUT_MS, "Drums")
+      .then(() => {
+        this.drumsLoaded = true;
+      })
+      .finally(() => {
+        this.drumsLoad = null;
+      });
+    return this.drumsLoad;
+  }
+
+  setDrumsEnabled(on: boolean): void {
+    this.drumsEnabled = on;
+  }
+
+  setGroove(groove: Groove): void {
+    this.groove = groove;
+  }
+
+  setDrumsVolume(v: number): void {
+    if (this.drumGain) this.drumGain.gain.value = Math.max(0, Math.min(1.2, v));
+  }
+
+  hasDrums(): boolean {
+    return this.drumsLoaded;
   }
 
   private createPianoForFlavor(
@@ -764,6 +822,27 @@ class AudioEngine {
       this.stepCounter++;
     }, "8n");
     this.loop.start(0);
+
+    // Drums on the 16th grid, derived from Transport ticks so they stay on
+    // the bar line through tempo changes and pauses. Free play / practice
+    // only drum while a chord is held; Perform drums from bar 0 on.
+    this.drumLoop = new Tone.Loop((toneTime) => {
+      if (this.paused || !this.drumsEnabled || !this.drumsLoaded || !this.drums) return;
+      if (!this.performing && this.currentChord.length === 0) return;
+      const transport = Tone.getTransport();
+      const s16 = Math.round(transport.getTicksAtTime(toneTime) / (transport.PPQ / 4)) - this.drumOffset16;
+      if (s16 < 0) return;
+      const time = this.toNativeTime(toneTime);
+      const step = s16 % 16;
+      const bar = Math.floor(s16 / 16);
+      const hits = hitsAt(this.groove, step);
+      if (this.performing && step === 0 && this.sectionBars.has(bar)) hits.push({ sample: "crash", velocity: 70 });
+      for (const h of hits) {
+        const velocity = Math.max(20, Math.min(120, h.velocity + (Math.random() - 0.5) * 8));
+        this.drums.start({ note: h.sample, time: time + Math.random() * 0.003, velocity });
+      }
+    }, "16n");
+    this.drumLoop.start(0);
     // Perform mode starts the Transport itself, on a scheduled downbeat.
     if (!this.gridLocked && Tone.getTransport().state !== "started") Tone.getTransport().start();
     this.loopRunning = true;
@@ -804,7 +883,14 @@ class AudioEngine {
    * pattern grid locks to the song's bars, and songTime() reads the audible
    * position. Bar k of the song starts at countInBeats * beat + k * bar.
    */
-  startPerformance(opts: { bpm: number; countInBeats: number; metronome: boolean }): void {
+  startPerformance(opts: {
+    bpm: number;
+    countInBeats: number;
+    metronome: boolean;
+    groove?: Groove;
+    /** Bars that open a new section (crash cymbal). */
+    sectionBars?: number[];
+  }): void {
     const ctx = this.ensureContext();
     const transport = Tone.getTransport();
     this.stopLoop();
@@ -814,10 +900,21 @@ class AudioEngine {
     const beat = 60 / opts.bpm;
     this.gridLocked = true;
     this.stepOffset = opts.countInBeats * 2;
+    this.drumOffset16 = opts.countInBeats * 4;
     this.stepCounter = 0;
     this.paused = false;
+    this.performing = true;
+    if (opts.groove) this.groove = opts.groove;
+    this.sectionBars = new Set(opts.sectionBars ?? []);
+    // Count-in: drumsticks when the kit is loaded, the click otherwise.
     for (let i = 0; i < opts.countInBeats; i++) {
-      transport.scheduleOnce((t) => this.click(t, i === 0 ? 2 : 1), i * beat);
+      transport.scheduleOnce((t) => {
+        if (this.drumsEnabled && this.drumsLoaded && this.drums) {
+          this.drums.start({ note: i === 0 ? "stick-h" : "stick-m", time: this.toNativeTime(t), velocity: i === 0 ? 100 : 82 });
+        } else {
+          this.click(t, i === 0 ? 2 : 1);
+        }
+      }, i * beat);
     }
     if (opts.metronome) {
       transport.scheduleRepeat(
@@ -854,6 +951,25 @@ class AudioEngine {
     return this.nativeCtx?.currentTime ?? 0;
   }
 
+  /** What the device reports between scheduling a sound and hearing it
+   *  (Bluetooth can be 150-250 ms). 0 where the browser doesn't say. */
+  outputLatency(): number {
+    const ctx = this.nativeCtx as (AudioContext & { outputLatency?: number }) | null;
+    if (!ctx) return 0;
+    const l = (ctx.outputLatency ?? 0) + (ctx.baseLatency ?? 0);
+    return Number.isFinite(l) ? Math.max(0, Math.min(0.35, l)) : 0;
+  }
+
+  /** Schedule n clicks from `startIn` seconds from now; returns their context times. */
+  scheduleClicks(n: number, interval: number, startIn = 0.6): number[] {
+    const ctx = this.nativeCtx;
+    if (!ctx) return [];
+    const t0 = ctx.currentTime + startIn;
+    const times = Array.from({ length: n }, (_, i) => t0 + i * interval);
+    times.forEach((t, i) => this.click(t, i % 4 === 0 ? 1 : 0));
+    return times;
+  }
+
   pausePerformance(): void {
     // attackChordNow() is gated on `paused`, so hands/keys stay silent under
     // the pause overlay while the Transport is frozen.
@@ -877,6 +993,9 @@ class AudioEngine {
   stopPerformance(): void {
     this.paused = false;
     this.duck(false);
+    this.performing = false;
+    this.drumOffset16 = 0;
+    this.sectionBars.clear();
     const transport = Tone.getTransport();
     transport.cancel(0);
     this.stopLoop();
@@ -1025,6 +1144,11 @@ class AudioEngine {
       this.loop.stop();
       this.loop.dispose();
       this.loop = null;
+    }
+    if (this.drumLoop) {
+      this.drumLoop.stop();
+      this.drumLoop.dispose();
+      this.drumLoop = null;
     }
     if (Tone.getTransport().state !== "stopped") Tone.getTransport().stop();
     this.loopRunning = false;

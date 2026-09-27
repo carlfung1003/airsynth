@@ -90,15 +90,62 @@ export type Held = { symbol: string | null; since: number };
  * - Not holding it when the window closes: miss.
  */
 export function decide(pos: ChartPosition, target: number, now: number, held: Held): Judgement | null {
+  return decideTimed(pos, target, now, held)?.judgement ?? null;
+}
+
+export type Verdict = {
+  judgement: Judgement;
+  /** Onset minus target in seconds (negative = early); null for holds and misses. */
+  offset: number | null;
+};
+
+/** decide(), plus how early or late the change was when it was a change. */
+export function decideTimed(pos: ChartPosition, target: number, now: number, held: Held): Verdict | null {
   const holding = held.symbol === pos.symbol;
   if (holding && held.since >= target - EARLY_OPEN && held.since <= target + WINDOWS.good) {
     if (now < held.since) return null;
-    return judgeOffset(held.since - target);
+    const offset = held.since - target;
+    return { judgement: judgeOffset(offset), offset };
   }
   if (now < target) return null;
-  if (holding) return pos.repeat ? "perfect" : "good";
-  if (now >= target + WINDOWS.good) return "miss";
+  if (holding) return { judgement: pos.repeat ? "perfect" : "good", offset: pos.repeat ? null : -EARLY_OPEN };
+  if (now >= target + WINDOWS.good) return { judgement: "miss", offset: null };
   return null;
+}
+
+/** "Early" / "Late" once a change is off the Perfect window. */
+export function timingWord(offset: number | null): "Early" | "Late" | null {
+  if (offset == null || Math.abs(offset) <= WINDOWS.perfect) return null;
+  return offset < 0 ? "Early" : "Late";
+}
+
+export type TimingSummary = {
+  /** Mean offset over timed changes, seconds; null if none. */
+  mean: number | null;
+  early: number;
+  late: number;
+  timed: number;
+};
+
+export function timingSummary(offsets: ReadonlyArray<number | null>): TimingSummary {
+  const timed = offsets.filter((o): o is number => o != null);
+  // Changes made a whole beat early are clamped to -EARLY_OPEN: count them as
+  // early but keep them out of the average, which they'd only distort.
+  const precise = timed.filter((o) => o > -EARLY_OPEN);
+  return {
+    mean: precise.length ? precise.reduce((a, b) => a + b, 0) / precise.length : null,
+    early: timed.filter((o) => timingWord(o) === "Early").length,
+    late: timed.filter((o) => timingWord(o) === "Late").length,
+    timed: timed.length,
+  };
+}
+
+/** One plain sentence about the player's timing. */
+export function timingSentence(t: TimingSummary): string {
+  if (t.mean == null) return "No timed changes to read.";
+  const ms = Math.round(Math.abs(t.mean) * 1000);
+  if (ms <= 25) return "Right on the beat, on average.";
+  return `On average ${ms} ms ${t.mean < 0 ? "early" : "late"}.`;
 }
 
 export type RunStats = {
@@ -220,6 +267,7 @@ export function savePrefs<T extends object>(prefs: T): void {
 
 /** Difficulty from what the chart asks of the right hand. */
 export function difficultyOf(song: Song): { level: 1 | 2 | 3 | 4 | 5; label: string } {
+  if (song.coach) return { level: 1, label: "Warm-up" };
   const chart = buildChart(song);
   const palette = new Set(chart.map((c) => c.symbol)).size;
   const changes = chart.filter((c) => !c.repeat).length;
@@ -231,3 +279,24 @@ export function difficultyOf(song: Song): { level: 1 | 2 | 3 | 4 | 5; label: str
   const label = ["", "Warm-up", "Easy", "Medium", "Hard", "Expert"][level];
   return { level, label };
 }
+
+// ── Latency calibration ───────────────────────────────────────────────────
+
+/** Median tap-minus-click in ms (rounded to 5) over the clicks after a
+ *  warm-up; null if fewer than 5 taps land near a click. */
+export function measureOffset(clicks: number[], taps: number[], interval: number, warmup = 4): number | null {
+  const diffs: number[] = [];
+  for (const c of clicks.slice(warmup)) {
+    let best: number | null = null;
+    for (const t of taps) {
+      const d = t - c;
+      if (Math.abs(d) < interval / 2 && (best == null || Math.abs(d) < Math.abs(best))) best = d;
+    }
+    if (best != null) diffs.push(best);
+  }
+  if (diffs.length < 5) return null;
+  diffs.sort((a, b) => a - b);
+  const mid = diffs[Math.floor(diffs.length / 2)];
+  return Math.round((mid * 1000) / 5) * 5;
+}
+

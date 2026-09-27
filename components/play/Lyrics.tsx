@@ -19,11 +19,21 @@ export function Lyrics({
   status,
   view,
   cursor,
+  coach,
 }: {
   status: "idle" | "loading" | "ready" | "missing";
   view: LyricView | null;
   cursor: number;
+  /** Guided songs show a coaching line instead of lyrics. */
+  coach?: string | null;
 }) {
+  if (coach) {
+    return (
+      <section className="as-lyrics as-coach" aria-live="polite" aria-label="Coach">
+        <p key={coach} className="as-coach-line">{coach}</p>
+      </section>
+    );
+  }
   return (
     <section className="as-lyrics" aria-live="polite" aria-label="Lyrics">
       {status === "loading" && <p className="as-lyric-note">Loading lyrics</p>}

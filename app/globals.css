@@ -403,6 +403,52 @@ button:disabled {
   color: var(--accent);
 }
 
+.as-timing-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.as-calibrator {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.as-tap-pad {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 150px;
+  border-radius: 14px;
+  border: 1px dashed var(--line-2);
+  background: rgba(236, 235, 231, 0.03);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.as-tap-pad:active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.as-tap-pad small {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Tally lamp: the audio status light ───────────────────────────────── */
 .as-tally {
   display: inline-flex;
@@ -942,6 +988,46 @@ button:disabled {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+.as-timing {
+  display: grid;
+  gap: 10px;
+}
+.as-timing-line {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.as-timing-line span {
+  color: var(--text-3);
+}
+.as-strip {
+  display: flex;
+  gap: 2px;
+  height: 20px;
+  align-items: stretch;
+}
+.as-strip i {
+  flex: 1 1 0;
+  min-width: 2px;
+  border-radius: 2px;
+  background: rgba(236, 235, 231, 0.08);
+}
+.as-strip i[data-start="true"] {
+  margin-left: 5px;
+}
+.as-strip i[data-grade="perfect"] {
+  background: var(--accent);
+}
+.as-strip i[data-grade="great"] {
+  background: rgba(236, 235, 231, 0.75);
+}
+.as-strip i[data-grade="good"] {
+  background: rgba(236, 235, 231, 0.35);
+}
+.as-strip i[data-grade="miss"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(236, 235, 231, 0.18);
+}
 .as-results-actions {
   display: flex;
   gap: 10px;
@@ -1071,7 +1157,6 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-transform: capitalize;
 }
 
 .as-progress {
@@ -1321,6 +1406,12 @@ button.as-progress-seg:hover {
   font-weight: 600;
   color: var(--text-2);
 }
+.as-judge small[data-word] {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
 @keyframes as-judge {
   0% {
     opacity: 0;
@@ -1351,6 +1442,14 @@ button.as-progress-seg:hover {
   padding: 12px 0 4px;
   text-align: center;
   min-height: 108px;
+}
+.as-coach-line {
+  max-width: 40ch;
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  animation: as-rise 420ms var(--ease-out) both;
 }
 .as-lyric-note {
   color: var(--text-3);
@@ -1719,6 +1818,32 @@ button.as-progress-seg:hover {
   color: rgba(22, 8, 6, 0.7);
 }
 
+/* Judgement ring on the chord badge that was just played. */
+.as-chord-flash {
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  border: 2px solid var(--text);
+  pointer-events: none;
+  animation: as-ring 560ms var(--ease-out) both;
+}
+.as-chord-flash[data-judge="perfect"] {
+  border-color: var(--accent);
+}
+.as-chord-flash[data-judge="good"] {
+  border-color: rgba(236, 235, 231, 0.4);
+}
+@keyframes as-ring {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
 .as-reel-hub {
   position: fixed;
   z-index: 7;
@@ -1755,6 +1880,19 @@ button.as-progress-seg:hover {
   line-height: 1;
   color: var(--accent);
   animation: as-count 520ms var(--ease-out) both;
+}
+.as-hub-milestone {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  animation: as-count 520ms var(--ease-out) both;
+}
+.as-hub-milestone b {
+  font-size: clamp(40px, 5vw, 60px);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+  font-variation-settings: "wdth" 125;
 }
 @keyframes as-count {
   from {

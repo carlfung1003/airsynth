@@ -13,6 +13,14 @@ Live: [airsynth.carlfung.dev](https://airsynth.carlfung.dev)
 - **Chord lane**: bars slide toward a hit line (one rAF writes a transform, no React renders per frame); repeats join the bar before them; judged bars keep their grade colour.
 - Game logic is pure and tested: `lib/game.ts`, `npx tsx tests/game.test.ts`.
 
+### v3.1 (KAN-229)
+
+- **Drums**: an LM-2 (LinnDrum) kit from smplr, scheduled off Transport ticks so it stays on the bar line. Grooves in `lib/grooves.ts` (ballad, half-time, pop, drive), set per song with `groove` or picked from tempo. Perform counts in on sticks and hits a crash on each new section; practice and free play drum while a chord is held. The kit loads in the background and a run never waits for it.
+- **Early / Late**: a change outside the Perfect window says which way it missed. Results add a timing sentence ("On average 48 ms late") and a strip with one tick per bar, coloured by grade.
+- **Input offset**: players change on what they hear, which arrives late by the device's output latency (Bluetooth: 150 to 250 ms). Onsets are shifted back by the browser-reported latency, or by a calibrated value (Sound settings, Timing, Calibrate: tap along with 12 clicks, median of the last 8).
+- **Warm-up**: a guided 10-bar song first in the setlist. Songs with `coach` lines show them in place of lyrics, keyed to the bar being played.
+- **Feedback**: the judged chord badge flashes a ring (red for Perfect); streaks of 10, 25, 50 and 100 are called out in the reel hub.
+
 ### Mobile audio fixes
 
 Sound did not work on phones. Four causes, all in `lib/audio.ts`:
@@ -36,6 +44,8 @@ PLAYWRIGHT_MODULE=~/ai-journey/node_modules/playwright \
   npx tsx tests/e2e-perform.ts http://localhost:3000         # plays a Perform run, expects S
   npx tsx tests/e2e-perform.ts --sloppy                      # late + skipped changes
   npx tsx tests/e2e-mobile-audio.ts                          # iPhone WebKit: unlock, load, sound
+  npx tsx tests/e2e-recovery.ts                              # retry after a failed load, silent pause
+  npx tsx tests/e2e-calibrate.ts                             # tap-along calibration lands near +100 ms
 ```
 
 ## Earlier versions

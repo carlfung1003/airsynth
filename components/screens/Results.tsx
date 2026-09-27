@@ -3,7 +3,17 @@
 import { ArrowCounterClockwiseIcon, ListIcon } from "@phosphor-icons/react";
 import type { Song } from "@/lib/songs";
 import { ART, coverFor } from "@/lib/art";
-import { accuracyOf, gradeFor, isFullCombo, type RunStats } from "@/lib/game";
+import {
+  accuracyOf,
+  gradeFor,
+  isFullCombo,
+  timingSentence,
+  timingSummary,
+  timingWord,
+  type ChartPosition,
+  type Judgement,
+  type RunStats,
+} from "@/lib/game";
 
 export type RunResult = {
   song: Song;
@@ -11,6 +21,9 @@ export type RunResult = {
   tempo: number;
   newBest: boolean;
   short: boolean;
+  chart: ChartPosition[];
+  offsets: Array<number | null>;
+  grades: Judgement[];
 };
 
 const GRADE_LINE: Record<string, string> = {
@@ -56,7 +69,9 @@ export function Results({ result, onRetry, onSetlist }: { result: RunResult; onR
               {result.newBest && <span className="as-tag" data-tone="accent">New best</span>}
               {fc && <span className="as-tag">Full combo</span>}
             </span>
-            <p className="as-results-line">{GRADE_LINE[grade]}</p>
+            <p className="as-results-line">
+              {song.coach ? "Warm-up done. Let It Be is a good first real song." : GRADE_LINE[grade]}
+            </p>
           </div>
         </div>
 
@@ -87,6 +102,8 @@ export function Results({ result, onRetry, onSetlist }: { result: RunResult; onR
           </div>
         </dl>
 
+        <Timing result={result} />
+
         <footer className="as-results-actions">
           <button type="button" className="as-cta" onClick={onRetry} autoFocus>
             <ArrowCounterClockwiseIcon size={18} weight="bold" /> Play again
@@ -97,5 +114,40 @@ export function Results({ result, onRetry, onSetlist }: { result: RunResult; onR
         </footer>
       </section>
     </main>
+  );
+}
+
+// How the run went bar by bar: one tick per bar coloured by grade, section
+// labels underneath, and a sentence about the player's timing tendency.
+function Timing({ result }: { result: RunResult }) {
+  const summary = timingSummary(result.offsets);
+  const perBar = result.chart.map((p, i) => {
+    const offset = result.offsets[i] ?? null;
+    return { p, offset, word: timingWord(offset) };
+  });
+  const judged = result.grades.length;
+  return (
+    <section className="as-timing" aria-label="Timing">
+      <p className="as-timing-line">
+        {timingSentence(summary)}
+        {summary.timed > 0 && (summary.early > 0 || summary.late > 0) && (
+          <span>
+            {" "}
+            {summary.early} early, {summary.late} late.
+          </span>
+        )}
+      </p>
+      <div className="as-strip" role="img" aria-label={`${judged} bars, coloured by grade`}>
+        {perBar.map(({ p, word }, i) => (
+          <i
+            key={i}
+            data-start={p.sectionStart && i > 0 ? "true" : undefined}
+            data-grade={result.grades[i]}
+            data-word={word ?? undefined}
+            title={`${p.sectionLabel}, bar ${p.chordIdx + 1}: ${p.symbol}${word ? `, ${word.toLowerCase()}` : ""}`}
+          />
+        ))}
+      </div>
+    </section>
   );
 }

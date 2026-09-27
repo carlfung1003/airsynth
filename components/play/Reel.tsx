@@ -149,6 +149,7 @@ export function ChordBadge({
   shortcut,
   interactive,
   onPress,
+  flash,
 }: {
   slot: ChordSlot;
   active: boolean;
@@ -159,6 +160,8 @@ export function ChordBadge({
   shortcut?: string;
   interactive: boolean;
   onPress: () => void;
+  /** The last judgement on this chord; `id` restarts the ring animation. */
+  flash?: { j: string; id: number } | null;
 }) {
   const { main, sub } = badgeText(slot);
   return (
@@ -186,6 +189,7 @@ export function ChordBadge({
         }
       }}
     >
+      {flash && <span key={flash.id} className="as-chord-flash" data-judge={flash.j} aria-hidden />}
       {shortcut && !compact && <span className="as-chord-key">{shortcut}</span>}
       <span className="as-chord-main">{main}</span>
       {sub && <span className="as-chord-sub">{sub}</span>}

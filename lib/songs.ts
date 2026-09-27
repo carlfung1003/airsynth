@@ -1,5 +1,6 @@
 import { Note } from "tonal";
 import type { ChordStyle, Instrument, ScaleType } from "./theory";
+import type { GrooveId } from "./grooves";
 
 // A phrase = one LRC lyric line. Either a flat array of chord symbols
 // (positions auto-distributed across the words evenly) or an object with
@@ -92,9 +93,43 @@ export type Song = {
   // over. Path is relative to /public, sourceBpm is the recorded tempo so
   // the engine can match it to the song's BPM via playbackRate.
   backingTrack?: { url: string; sourceBpm: number };
+  // Drum groove for the band (lib/grooves.ts); picked from tempo if unset.
+  groove?: GrooveId;
+  // Guided songs: coaching lines instead of LRClib lyrics. `at` is the bar
+  // index the line appears on (-1 = during the count-in).
+  coach?: Array<{ at: number; text: string }>;
 };
 
 export const SONGS: Song[] = [
+  {
+    // Guided first song: four chords, then two per line, with a coach line
+    // on each bar instead of lyrics. Short on purpose (about 40 seconds).
+    id: "warm-up",
+    title: "Warm-up",
+    artist: "Guided, about 40 seconds",
+    rootKey: "C",
+    scaleType: "major",
+    bpm: 84,
+    groove: "ballad",
+    defaultInstrument: "piano",
+    defaultPatternId: "block",
+    sections: [
+      { id: "four", label: "Four chords", phrases: [["C"], ["G"], ["Am"], ["F"]] },
+      { id: "again", label: "Again", phrases: [["C", "G"], ["Am", "F"]] },
+      { id: "end", label: "Home", phrases: [["C", "C"]] },
+    ],
+    structure: ["four", "again", "end"],
+    coach: [
+      { at: -1, text: "Four sticks count you in. Play C on the next beat." },
+      { at: 0, text: "C. Keep holding it until the lane says otherwise." },
+      { at: 1, text: "G, right on the one. The red rim shows the next chord." },
+      { at: 2, text: "A minor." },
+      { at: 3, text: "F. A little early is fine. Late costs points." },
+      { at: 4, text: "Same four again. Watch the lane, not the keys." },
+      { at: 6, text: "Two more." },
+      { at: 8, text: "Back home to C, and hold it." },
+    ],
+  },
   {
     id: "love-yourself",
     title: "Love Yourself",
@@ -102,6 +137,7 @@ export const SONGS: Song[] = [
     rootKey: "C",
     scaleType: "major",
     bpm: 100,
+    groove: "ballad",
     defaultInstrument: "guitar",
     defaultPatternId: "pluck",
     sections: [
@@ -196,6 +232,7 @@ export const SONGS: Song[] = [
     rootKey: "C",
     scaleType: "major",
     bpm: 100,
+    groove: "pop",
     defaultInstrument: "piano",
     defaultPatternId: "block",
     sections: [
@@ -245,6 +282,7 @@ export const SONGS: Song[] = [
     rootKey: "C",
     scaleType: "major",
     bpm: 92,
+    groove: "pop",
     defaultInstrument: "guitar",
     defaultPatternId: "travis",
     sections: [
@@ -317,6 +355,7 @@ export const SONGS: Song[] = [
     rootKey: "D",
     scaleType: "major",
     bpm: 109,
+    groove: "pop",
     defaultInstrument: "piano",
     defaultPatternId: "alberti",
     sections: [
@@ -357,6 +396,7 @@ export const SONGS: Song[] = [
     rootKey: "D",
     scaleType: "major",
     bpm: 145,
+    groove: "drive",
     defaultInstrument: "piano",
     defaultPatternId: "stride",
     sections: [
@@ -426,6 +466,7 @@ export const SONGS: Song[] = [
     rootKey: "G",
     scaleType: "major",
     bpm: 95,
+    groove: "ballad",
     defaultInstrument: "guitar",
     defaultPatternId: "pluck",
     sections: [
@@ -486,6 +527,7 @@ export const SONGS: Song[] = [
     rootKey: "A",
     scaleType: "major",
     bpm: 135,
+    groove: "halftime",
     defaultInstrument: "piano",
     defaultPatternId: "alberti",
     sections: [
@@ -578,6 +620,7 @@ export const SONGS: Song[] = [
     rootKey: "C",
     scaleType: "major",
     bpm: 73,
+    groove: "ballad",
     defaultInstrument: "piano",
     defaultPatternId: "stride",
     sections: [
@@ -616,6 +659,7 @@ export const SONGS: Song[] = [
     rootKey: "C",
     scaleType: "major",
     bpm: 72,
+    groove: "ballad",
     defaultInstrument: "piano",
     defaultPatternId: "wave",
     sections: [

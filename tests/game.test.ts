@@ -1,9 +1,11 @@
 // Plain-Node checks for lib/game.ts: `npx tsx tests/game.test.ts`
 import { SONGS } from "../lib/songs";
 import {
-  applyJudgement, buildChart, chartTiming, decide, difficultyOf, emptyStats, gradeFor,
-  judgeOffset, multiplierFor, targetTime, accuracyOf, isFullCombo, WINDOWS, EARLY_OPEN,
+  applyJudgement, buildChart, chartTiming, decide, decideTimed, difficultyOf, emptyStats, gradeFor,
+  judgeOffset, multiplierFor, targetTime, accuracyOf, isFullCombo, timingSentence, timingSummary, timingWord, measureOffset,
+  WINDOWS, EARLY_OPEN,
 } from "../lib/game";
+import { GROOVES, grooveFor, hitsAt } from "../lib/grooves";
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, extra = "") => {
@@ -30,6 +32,33 @@ check("waiting inside window", decide(pos, T, T + 0.2, { symbol: "C", since: 5 }
 check("pre-positioned early = good at the beat", decide(pos, T, T, { symbol: "Am", since: T - EARLY_OPEN - 0.5 }) === "good");
 check("repeat hold = perfect", decide({ ...pos, repeat: true }, T, T, { symbol: "Am", since: 2 }) === "perfect");
 check("released = miss", decide(pos, T, T + 0.5, { symbol: null, since: 9.9 }) === "miss");
+
+// timed verdicts + timing feedback
+check("timed late offset", Math.abs((decideTimed(pos, T, 10.3, { symbol: "Am", since: 10.2 })?.offset ?? 0) - 0.2) < 1e-9);
+check("miss has no offset", decideTimed(pos, T, T + 0.5, { symbol: "C", since: 5 })?.offset === null);
+check("repeat hold has no offset", decideTimed({ ...pos, repeat: true }, T, T, { symbol: "Am", since: 2 })?.offset === null);
+check("timing word", timingWord(0.05) === null && timingWord(-0.2) === "Early" && timingWord(0.3) === "Late" && timingWord(null) === null);
+const ts = timingSummary([0.05, 0.2, -0.2, null, -EARLY_OPEN]);
+check("summary counts", ts.early === 2 && ts.late === 1 && ts.timed === 4, JSON.stringify(ts));
+check("summary mean skips clamped early", Math.abs((ts.mean ?? 0) - (0.05 + 0.2 - 0.2) / 3) < 1e-9, JSON.stringify(ts));
+check("sentence on the beat", timingSentence(timingSummary([0.01, -0.01])) === "Right on the beat, on average.");
+check("sentence late", timingSentence(timingSummary([0.08, 0.1])) === "On average 90 ms late.");
+
+// calibration
+const clicks = Array.from({ length: 12 }, (_, i) => 1 + i * 0.6);
+const lateTaps = clicks.map((c, i) => c + 0.14 + (i % 3 - 1) * 0.01);
+check("calibration median", measureOffset(clicks, lateTaps, 0.6) === 140, String(measureOffset(clicks, lateTaps, 0.6)));
+check("calibration ignores a stray tap", measureOffset(clicks, [...lateTaps, 3.05], 0.6) === 140);
+check("calibration needs 5 taps", measureOffset(clicks, lateTaps.slice(0, 7), 0.6) === null);
+
+// grooves
+check("groove from song field", grooveFor({ groove: "halftime", bpm: 70 }).id === "halftime");
+check("groove from tempo", grooveFor({ bpm: 73 }).id === "ballad" && grooveFor({ bpm: 100 }).id === "pop" && grooveFor({ bpm: 145 }).id === "drive");
+check("pop backbeat", hitsAt(GROOVES.pop, 4).some((h) => h.sample === "snare-m") && hitsAt(GROOVES.pop, 12).some((h) => h.sample === "snare-m"));
+check("open hat replaces closed", hitsAt(GROOVES.pop, 14).filter((h) => h.sample.startsWith("hh")).map((h) => h.sample).join() === "hhopen");
+check("ballad side stick on 3", hitsAt(GROOVES.ballad, 8).some((h) => h.sample === "stick-m"));
+for (const song of SONGS) check(`${song.id} has a groove`, grooveFor(song) != null);
+check("warm-up is level 1", difficultyOf(SONGS.find((x) => x.id === "warm-up")!).level === 1);
 
 // scoring
 let s = emptyStats(20);

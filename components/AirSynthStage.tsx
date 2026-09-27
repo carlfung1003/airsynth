@@ -59,7 +59,7 @@ import {
   applyJudgement,
   buildChart,
   chartTiming,
-  decide,
+  decideTimed,
   emptyStats,
   gradeFor,
   isFullCombo,
@@ -68,7 +68,9 @@ import {
   saveBest,
   savePrefs,
   targetTime,
+  timingWord,
 } from "@/lib/game";
+import { grooveFor } from "@/lib/grooves";
 
 type Screen = "title" | "setlist" | "play" | "results";
 
@@ -87,6 +89,9 @@ const phoneServerSnapshot = () => false;
 // the tracker's latency. Taps and keys are immediate.
 const CAMERA_LAG = 0.1;
 
+// Streak lengths that get called out in the reel hub.
+const MILESTONES = [10, 25, 50, 100];
+
 // Chord keys: 1..9, 0, -, = (song palettes go up to 12 chords).
 const CHORD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="] as const;
 // Pattern keys in the order the chips are laid out.
@@ -103,6 +108,9 @@ const DEFAULT_SETTINGS: SoundSettings = {
   droneEnabled: true,
   backingVolume: 0.55,
   metronome: false,
+  drums: true,
+  drumsVolume: 0.5,
+  inputOffsetMs: null,
   transposeSemis: 0,
   chordStyle: "triad",
   rootKey: "C",
@@ -112,7 +120,10 @@ const DEFAULT_SETTINGS: SoundSettings = {
 const DEFAULT_SETUP: Setup = { mode: "perform", tempo: 1, length: "full", instrument: "piano" };
 
 type Prefs = {
-  settings: Pick<SoundSettings, "pianoFlavor" | "reverb" | "droneEnabled" | "metronome" | "fillsEnabled" | "fillerId">;
+  settings: Pick<
+    SoundSettings,
+    "pianoFlavor" | "reverb" | "droneEnabled" | "metronome" | "fillsEnabled" | "fillerId" | "drums" | "drumsVolume" | "inputOffsetMs"
+  >;
   setup: Setup;
   selectedId: string;
 };
@@ -126,6 +137,9 @@ type PerformRun = {
   countIn: number | null;
   short: boolean;
   tempo: number;
+  /** Per bar: onset minus downbeat (s), null for holds and misses. */
+  offsets: Array<number | null>;
+  grades: Judgement[];
 };
 
 export default function AirSynthStage() {
@@ -152,7 +166,10 @@ export default function AirSynthStage() {
   const [runState, setRunState] = useState<"idle" | "armed" | "running">("idle");
   const [stats, setStats] = useState<RunStats>(() => emptyStats(0));
   const [judgements, setJudgements] = useState<Map<number, Judgement>>(() => new Map());
-  const [lastJudge, setLastJudge] = useState<{ j: Judgement; id: number } | null>(null);
+  const [lastJudge, setLastJudge] = useState<{ j: Judgement; id: number; word: string | null } | null>(null);
+  // The chord badge that was just judged flashes; streak milestones show in the hub.
+  const [flash, setFlash] = useState<{ symbol: string; j: Judgement; id: number } | null>(null);
+  const [milestone, setMilestone] = useState<{ n: number; id: number } | null>(null);
   const [perfNext, setPerfNext] = useState(0);
   const [perfBar, setPerfBar] = useState(0);
   const [countIn, setCountIn] = useState<number | null>(null);
@@ -196,6 +213,9 @@ export default function AirSynthStage() {
         metronome: settings.metronome,
         fillsEnabled: settings.fillsEnabled,
         fillerId: settings.fillerId,
+        drums: settings.drums,
+        drumsVolume: settings.drumsVolume,
+        inputOffsetMs: settings.inputOffsetMs,
       },
       setup,
       selectedId,
@@ -296,6 +316,8 @@ export default function AirSynthStage() {
   const chordIndexRef = useRef<number | null>(null);
   const patternIndexRef = useRef(0);
   const heldRef = useRef<Held>({ symbol: null, since: 0 });
+  // Seconds to shift input onsets back by (see the input offset effect).
+  const inputOffsetRef = useRef(0);
   const chordsRef = useRef(chords);
   const chordSymbolsRef = useRef(chordSymbols);
   const patternsRef = useRef(patterns);
@@ -348,7 +370,7 @@ export default function AirSynthStage() {
       if (audioReadyRef.current) engine.setChord(slot ? slot.notes : []);
       heldRef.current = {
         symbol: next == null ? null : (chordSymbolsRef.current[next] ?? null),
-        since: engine.songTimeAt(engine.now()) - (source === "hand" ? CAMERA_LAG : 0),
+        since: engine.songTimeAt(engine.now()) - inputOffsetRef.current - (source === "hand" ? CAMERA_LAG : 0),
       };
       // Practice: playing the expected chord moves the song on.
       const s = songRef.current;
@@ -400,6 +422,23 @@ export default function AirSynthStage() {
   useEffect(() => {
     if (audioReady) engine.setBackingVolume(settings.backingVolume);
   }, [audioReady, settings.backingVolume, engine]);
+  useEffect(() => {
+    engine.setDrumsEnabled(settings.drums);
+  }, [settings.drums, engine]);
+  useEffect(() => {
+    if (audioReady) engine.setDrumsVolume(settings.drumsVolume);
+  }, [audioReady, settings.drumsVolume, engine]);
+  // Practice / free play groove (Perform passes its own at the start of a run).
+  useEffect(() => {
+    engine.setGroove(grooveFor(song));
+  }, [song, engine]);
+
+  // Players time their changes to what they HEAR, which is the scheduled
+  // downbeat plus the device's output latency (large on Bluetooth). Onsets
+  // are shifted back by a calibrated offset, or by the reported latency.
+  useEffect(() => {
+    inputOffsetRef.current = settings.inputOffsetMs != null ? settings.inputOffsetMs / 1000 : engine.outputLatency();
+  }, [settings.inputOffsetMs, audioReady, engine]);
   // Tempo: Perform sets it when the run starts; the other modes follow the slider.
   useEffect(() => {
     if (!audioReady || mode === "perform") return;
@@ -470,7 +509,7 @@ export default function AirSynthStage() {
   // ── Lyrics (keyed on the untransposed song: pitch doesn't move them) ───
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!baseSong) {
+    if (!baseSong || baseSong.coach) {
       setLyrics(null);
       setLyricsStatus("idle");
       return;
@@ -499,23 +538,43 @@ export default function AirSynthStage() {
     const s = songRef.current;
     if (!s) return;
     const full = buildChart(s);
-    const short = setup.length === "short";
+    // "To first chorus" only means something if it actually cuts the song.
+    const short = setup.length === "short" && shortLength(s) < full.length;
     const chart = short ? full.slice(0, shortLength(s)) : full;
     const bpm = (s.bpm ?? 100) * setup.tempo;
     const timing = chartTiming(bpm);
-    perfRef.current = { chart, timing, next: 0, stats: emptyStats(chart.length), bar: -1, countIn: COUNT_IN_BEATS, short, tempo: setup.tempo };
+    perfRef.current = {
+      chart,
+      timing,
+      next: 0,
+      stats: emptyStats(chart.length),
+      bar: -1,
+      countIn: COUNT_IN_BEATS,
+      short,
+      tempo: setup.tempo,
+      offsets: [],
+      grades: [],
+    };
     heldRef.current = { symbol: chordIndexRef.current == null ? null : (chordSymbolsRef.current[chordIndexRef.current] ?? null), since: -99 };
     setPerfChart({ chart, timing });
     setStats(emptyStats(chart.length));
     setJudgements(new Map());
     setLastJudge(null);
+    setFlash(null);
+    setMilestone(null);
     setPerfNext(0);
     setPerfBar(0);
     setCountIn(COUNT_IN_BEATS);
     setSongCursor({ structureIdx: chart[0]?.structureIdx ?? 0, chordIdx: 0 });
     setPaused(false);
     engine.setBpm(bpm);
-    engine.startPerformance({ bpm, countInBeats: COUNT_IN_BEATS, metronome: settings.metronome });
+    engine.startPerformance({
+      bpm,
+      countInBeats: COUNT_IN_BEATS,
+      metronome: settings.metronome,
+      groove: grooveFor(s),
+      sectionBars: chart.filter((p) => p.sectionStart && p.index > 0).map((p) => p.index),
+    });
     setRunState("running");
   }, [engine, setup.length, setup.tempo, settings.metronome]);
 
@@ -536,7 +595,7 @@ export default function AirSynthStage() {
       at: Date.now(),
     });
     setBests(loadBests());
-    setResult({ song: baseSong, stats: run.stats, tempo: run.tempo, newBest, short: run.short });
+    setResult({ song: baseSong, stats: run.stats, tempo: run.tempo, newBest, short: run.short, chart: run.chart, offsets: run.offsets, grades: run.grades });
     setScreen("results");
   }, [engine, applyChord, baseSong]);
 
@@ -575,14 +634,19 @@ export default function AirSynthStage() {
 
       let judged = false;
       while (run.next < chart.length) {
-        const j = decide(chart[run.next], targetTime(run.next, timing), now, heldRef.current);
-        if (!j) break;
+        const v = decideTimed(chart[run.next], targetTime(run.next, timing), now, heldRef.current);
+        if (!v) break;
+        const j = v.judgement;
         const index = run.next;
         run.stats = applyJudgement(run.stats, j);
+        run.offsets[index] = v.offset;
+        run.grades[index] = j;
         run.next++;
         judged = true;
         setJudgements((m) => new Map(m).set(index, j));
-        setLastJudge({ j, id: index });
+        setLastJudge({ j, id: index, word: timingWord(v.offset) });
+        if (j !== "miss" && !chart[index].repeat) setFlash({ symbol: chart[index].symbol, j, id: index });
+        if (MILESTONES.includes(run.stats.combo)) setMilestone({ n: run.stats.combo, id: index });
       }
       if (judged) {
         setStats(run.stats);
@@ -625,6 +689,13 @@ export default function AirSynthStage() {
 
   const getSongTime = useCallback(() => engine.songTime(), [engine]);
 
+  // A streak call-out stays up for a moment, then the hub goes back to chords.
+  useEffect(() => {
+    if (!milestone) return;
+    const t = setTimeout(() => setMilestone((m) => (m?.id === milestone.id ? null : m)), 1500);
+    return () => clearTimeout(t);
+  }, [milestone]);
+
   // Read-only probe for the automated checks in tests/ (song clock, output
   // level, engine status). Harmless in production.
   useEffect(() => {
@@ -632,6 +703,7 @@ export default function AirSynthStage() {
       songTime: () => engine.songTime(),
       level: () => engine.getLevel(),
       status: () => engine.getStatus(),
+      drums: () => engine.hasDrums(),
     };
   }, [engine]);
 
@@ -892,6 +964,11 @@ export default function AirSynthStage() {
   const showLane = song != null && (mode === "perform" || mode === "practice");
   const playing = screen === "play";
 
+  // Guided songs: the coach line for the bar being played (-1 = count-in).
+  const coachBar = mode === "perform" ? (countIn != null || runState !== "running" ? -1 : perfBar) : globalCursorPos;
+  const coachLine = song?.coach ? [...song.coach].reverse().find((c) => c.at <= coachBar)?.text ?? song.coach[0]?.text ?? null : null;
+  const flashIndex = flash ? chordSymbols.indexOf(flash.symbol) : -1;
+
   let hint: string;
   if (!audioReady) hint = engineStatus.load === "error" ? "Sound didn't load. Tap the lamp to retry." : "Loading sound";
   else if (cameraStatus === "running" && !rightPresent) hint = "Raise your right hand and point at a chord.";
@@ -970,11 +1047,13 @@ export default function AirSynthStage() {
                 judgements={judgements}
                 compact={isPhone}
               />
-              {mode === "perform" && <JudgementPop judgement={lastJudge?.j ?? null} id={lastJudge?.id ?? 0} combo={stats.combo} />}
+              {mode === "perform" && (
+                <JudgementPop judgement={lastJudge?.j ?? null} id={lastJudge?.id ?? 0} combo={stats.combo} word={lastJudge?.word ?? null} />
+              )}
             </div>
           )}
 
-          {song && <Lyrics status={lyricsStatus} view={lyricView} cursor={globalCursorPos} />}
+          {song && <Lyrics status={lyricsStatus} view={lyricView} cursor={globalCursorPos} coach={coachLine} />}
 
           <div className="as-side">
             <div className="as-patterns-wrap">
@@ -1031,6 +1110,7 @@ export default function AirSynthStage() {
                   shortcut={CHORD_KEYS[i]}
                   interactive={!rightPresent}
                   onPress={() => pressChord(i)}
+                  flash={flash && i === flashIndex ? { j: flash.j, id: flash.id } : null}
                 />
               )}
               hub={
@@ -1047,6 +1127,11 @@ export default function AirSynthStage() {
                     <span className="as-hub-small">{engineStatus.load === "loading" ? `Loading ${Math.round(engineStatus.progress * 100)}%` : "Get ready"}</span>
                   ) : countIn != null && running ? (
                     <span key={countIn} className="as-hub-count">{countIn}</span>
+                  ) : milestone && running ? (
+                    <span key={milestone.id} className="as-hub-milestone">
+                      <b>{milestone.n}</b>
+                      <span className="as-hub-small">in a row</span>
+                    </span>
                   ) : (
                     <>
                       <span className="as-hub-chord">{held ? prettyChordSymbol(held.symbol) : "Rest"}</span>

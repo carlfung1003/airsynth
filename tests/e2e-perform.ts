@@ -45,6 +45,10 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="];
   await page.getByRole("button", { name: "Start" }).click();
   await page.waitForFunction(() => (window as any).__airsynth?.status().load === "ready", null, { timeout: 90_000 });
   const ctxState = await page.evaluate(() => (window as any).__airsynth.status().context);
+  // The drum kit loads in the background after the piano.
+  const drums = await page
+    .waitForFunction(() => (window as any).__airsynth.drums(), null, { timeout: 30_000 })
+    .then(() => true, () => false);
   await page.getByRole("button", { name: new RegExp(song.title) }).first().click();
   await page.getByRole("radio", { name: "Perform" }).click();
   await page.getByRole("radio", { name: "100%" }).click();
@@ -56,6 +60,7 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="];
   await page.evaluate((events: Array<{ at: number; key: string }>) => {
     const w = window as any;
     w.__levels = [];
+    w.__countInPeak = 0;
     let i = 0;
     const tick = () => {
       const t = w.__airsynth.songTime();
@@ -64,7 +69,10 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="];
         window.dispatchEvent(new KeyboardEvent("keyup", { key: events[i].key }));
         i++;
       }
-      w.__levels.push(w.__airsynth.level());
+      const lv = w.__airsynth.level();
+      w.__levels.push(lv);
+      // Before bar 0 only the count-in sounds (sticks, or the click without drums).
+      if (t > 0.05 && t < events[0].at - 0.05) w.__countInPeak = Math.max(w.__countInPeak, lv);
       if (i < events.length || t < events[events.length - 1].at + 5) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -81,7 +89,11 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="];
     score: document.querySelector(".as-results-num")?.textContent,
     stats: [...document.querySelectorAll(".as-results-stats div")].map((d) => d.textContent),
     peak: Math.max(...((window as any).__levels as number[])),
+    countInPeak: (window as any).__countInPeak,
+    timing: document.querySelector(".as-timing-line")?.textContent,
+    stripBars: document.querySelectorAll(".as-strip i").length,
+    stripGraded: document.querySelectorAll(".as-strip i[data-grade]").length,
   }));
-  console.log(JSON.stringify({ browser: useWebkit ? "webkit" : "chromium", song: song.id, bars: chart.length, changes: schedule.length, ctxState, ...res, errors }, null, 1));
+  console.log(JSON.stringify({ browser: useWebkit ? "webkit" : "chromium", song: song.id, bars: chart.length, changes: schedule.length, ctxState, drums, ...res, errors }, null, 1));
   await browser.close();
 })();

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getAudioEngine } from "@/lib/audio";
+import { measureOffset } from "@/lib/game";
 import { XIcon } from "@phosphor-icons/react";
 import { FILLERS, KEYS, PIANO_FLAVORS, type ChordStyle, type Instrument, type PianoFlavor, type ScaleType } from "@/lib/theory";
 
@@ -15,6 +17,10 @@ export type SoundSettings = {
   droneEnabled: boolean;
   backingVolume: number;
   metronome: boolean;
+  drums: boolean;
+  drumsVolume: number;
+  /** Input timing offset in ms; null = automatic (device output latency). */
+  inputOffsetMs: number | null;
   transposeSemis: number;
   chordStyle: ChordStyle;
   rootKey: string;
@@ -174,8 +180,17 @@ export function SettingsSheet({
             {context.song && (
               <Switch label="Fills" hint="Walk-ups into each chord change" checked={s.fillsEnabled} onChange={(v) => onChange({ fillsEnabled: v })} />
             )}
+            {context.mode !== "free" && (
+              <Switch label="Drums" hint="A band groove under the chords" checked={s.drums} onChange={(v) => onChange({ drums: v })} />
+            )}
             <Switch label="Drone" hint="A low tonic hum while your hands are down" checked={s.droneEnabled} onChange={(v) => onChange({ droneEnabled: v })} />
           </div>
+
+          {context.mode !== "free" && s.drums && (
+            <Slider label="Drums" value={Math.round(s.drumsVolume * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ drumsVolume: v / 100 })} />
+          )}
+
+          <TimingField offsetMs={s.inputOffsetMs} onChange={(ms) => onChange({ inputOffsetMs: ms })} locked={locked} />
 
           {context.song && s.fillsEnabled && (
             <fieldset className="as-field">
@@ -239,5 +254,143 @@ function Switch({ label, hint, checked, onChange }: { label: string; hint: strin
         <span />
       </span>
     </button>
+  );
+}
+
+// Input timing: players change chords to what they hear, and speakers add
+// latency between the scheduled beat and the sound (Bluetooth: 150-250 ms).
+// Auto uses what the browser reports; Calibrate measures it by tapping along.
+function TimingField({ offsetMs, onChange, locked }: { offsetMs: number | null; onChange: (ms: number | null) => void; locked: boolean }) {
+  const [calibrating, setCalibrating] = useState(false);
+  const autoMs = Math.round(getAudioEngine().outputLatency() * 1000);
+  const value = offsetMs ?? autoMs;
+  return (
+    <fieldset className="as-field" disabled={locked}>
+      <legend>Timing</legend>
+      <label className="as-slider">
+        <span className="as-slider-label">Offset</span>
+        <input type="range" min={-100} max={300} step={5} value={value} onChange={(e) => onChange(parseInt(e.target.value, 10))} />
+        <output>
+          {value > 0 ? "+" : ""}
+          {value} ms
+        </output>
+      </label>
+      <div className="as-timing-actions">
+        <button type="button" className="as-ghost" onClick={() => setCalibrating(true)}>
+          Calibrate
+        </button>
+        <button type="button" className="as-text-btn" onClick={() => onChange(null)} aria-pressed={offsetMs == null}>
+          {offsetMs == null ? `Auto (${autoMs} ms)` : "Back to auto"}
+        </button>
+      </div>
+      <p className="as-field-help">If Perform keeps calling your changes late, calibrate. Wireless headphones need it most.</p>
+      {locked && <p className="as-field-help">Calibrate between runs.</p>}
+      {calibrating && (
+        <Calibrator
+          onDone={(ms) => {
+            setCalibrating(false);
+            if (ms != null) onChange(ms);
+          }}
+        />
+      )}
+    </fieldset>
+  );
+}
+
+const CAL_CLICKS = 12;
+const CAL_INTERVAL = 0.6;
+
+function Calibrator({ onDone }: { onDone: (ms: number | null) => void }) {
+  const [phase, setPhase] = useState<"ready" | "running" | "done">("ready");
+  const [taps, setTaps] = useState(0);
+  const [result, setResult] = useState<number | null>(null);
+  const clicksRef = useRef<number[]>([]);
+  const tapsRef = useRef<number[]>([]);
+
+  const start = () => {
+    const engine = getAudioEngine();
+    engine.unlock();
+    tapsRef.current = [];
+    setTaps(0);
+    clicksRef.current = engine.scheduleClicks(CAL_CLICKS, CAL_INTERVAL, 0.8);
+    setPhase("running");
+  };
+
+  const tap = () => {
+    if (phase !== "running") return;
+    tapsRef.current.push(getAudioEngine().now());
+    setTaps(tapsRef.current.length);
+  };
+
+  // Space taps too; the result is computed once the last click has passed.
+  useEffect(() => {
+    if (phase !== "running") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " " && !e.repeat) {
+        e.preventDefault();
+        e.stopPropagation();
+        tapsRef.current.push(getAudioEngine().now());
+        setTaps(tapsRef.current.length);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    const clicks = clicksRef.current;
+    const endIn = (clicks[clicks.length - 1] - getAudioEngine().now() + CAL_INTERVAL) * 1000;
+    const t = setTimeout(() => {
+      setResult(measureOffset(clicks, tapsRef.current, CAL_INTERVAL));
+      setPhase("done");
+    }, Math.max(0, endIn));
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      clearTimeout(t);
+    };
+  }, [phase]);
+
+  return (
+    <div className="as-calibrator">
+      {phase === "ready" && (
+        <>
+          <p>You will hear {CAL_CLICKS} clicks. Tap the pad (or press Space) on each one, in time.</p>
+          <div className="as-timing-actions">
+            <button type="button" className="as-cta" onClick={start}>
+              Start
+            </button>
+            <button type="button" className="as-text-btn" onClick={() => onDone(null)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+      {phase === "running" && (
+        <button type="button" className="as-tap-pad" onPointerDown={tap}>
+          Tap with the click
+          <small>
+            {taps} / {CAL_CLICKS}
+          </small>
+        </button>
+      )}
+      {phase === "done" && (
+        <>
+          <p>
+            {result == null
+              ? "Not enough steady taps to measure. Try again, tapping on every click."
+              : `You hear the beat about ${result} ms after it is scheduled. Offset set to ${result > 0 ? "+" : ""}${result} ms.`}
+          </p>
+          <div className="as-timing-actions">
+            {result != null && (
+              <button type="button" className="as-cta" onClick={() => onDone(result)}>
+                Use it
+              </button>
+            )}
+            <button type="button" className="as-ghost" onClick={start}>
+              Again
+            </button>
+            <button type="button" className="as-text-btn" onClick={() => onDone(null)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

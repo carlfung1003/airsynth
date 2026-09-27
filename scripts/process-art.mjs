@@ -23,6 +23,7 @@ const OUT = path.join(ROOT, "public/art");
 const MANIFEST = path.join(ROOT, "assets/art/art_manifest.json");
 
 const SONGS = [
+  "warm-up",
   "love-yourself",
   "sorry",
   "count-on-me",

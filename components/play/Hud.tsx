@@ -33,12 +33,27 @@ export function ScoreHud({ stats }: { stats: RunStats }) {
 
 /** The word that pops at the hit line when a bar is judged. `id` changes per
  *  judgement so the CSS animation restarts even for two Perfects in a row. */
-export function JudgementPop({ judgement, id, combo }: { judgement: Judgement | null; id: number; combo: number }) {
+export function JudgementPop({
+  judgement,
+  id,
+  combo,
+  word,
+}: {
+  judgement: Judgement | null;
+  id: number;
+  combo: number;
+  /** "Early" / "Late" when the change was off the Perfect window. */
+  word: string | null;
+}) {
   if (!judgement) return null;
   return (
     <div key={id} className="as-judge" data-judge={judgement} aria-live="off">
       <span>{JUDGE_LABEL[judgement]}</span>
-      {judgement !== "miss" && combo >= 4 && <small>{combo} in a row</small>}
+      {word ? (
+        <small data-word={word}>{word}</small>
+      ) : (
+        judgement !== "miss" && combo >= 4 && <small>{combo} in a row</small>
+      )}
     </div>
   );
 }
